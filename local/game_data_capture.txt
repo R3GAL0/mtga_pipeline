@@ -1,0 +1,12 @@
+This is a shell function defined in ~/.bashrc
+It runs the MTGA game, then afterwards copies the log file to a new location and adds a time stamp
+
+mtga() {
+    WINEPREFIX="$HOME/Games/mtga64" \
+    ~/.local/share/lutris/runners/wine/wine-ge-8-26-x86_64/bin/wine \
+    "$HOME/Games/mtga64/drive_c/Program Files/Wizards of the Coast/MTGA/MTGA.exe"
+
+    cp /home/r3gal/Games/mtga64/drive_c/users/r3gal/AppData/LocalLow/Wizards\ Of\ The\ Coast/MTGA/Player.log \
+    /home/r3gal/develop/mtga_pipeline/data/Player_$(date +%Y%m%d_%H%M%S).log
+
+}
