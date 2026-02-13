@@ -18,9 +18,11 @@ I believe "Playing" is flipped during the waiting screen after a match is found 
 [UnityCrossThreadLogger]STATE CHANGED {"old":"ConnectedToMatchDoor_ConnectedToGRE_Waiting","new":"Playing"}
 
 Hard end of match signal
+
 [UnityCrossThreadLogger]STATE CHANGED {"old":"Playing","new":"MatchCompleted"}
 
 This event happens prior to match starting/stopping
+
 MatchGameRoomStateChangedEvent
 
 ### Match result

@@ -1,5 +1,5 @@
-This is a shell function defined in ~/.bashrc
-It runs the MTGA game, then afterwards copies the log file to a new location and adds a time stamp
+# This is a shell function defined in ~/.bashrc
+# It runs the MTGA game, then afterwards copies the log file to a new location and adds a time stamp
 
 mtga() {
     WINEPREFIX="$HOME/Games/mtga64" \
