@@ -20,9 +20,11 @@ with open(path, 'r') as log_data, open(output_path, 'w') as csvfile:
 
     for line in log_data:
 
-        if recording & line.startswith('[UnityCrossThreadLogger]'):    
+        if recording and line.startswith('[UnityCrossThreadLogger]'):    
+            # Dropping '[UnityCrossThreadLogger]'
             line = line[24:]
 
+            # Grabbing the metadata. Checking if the payload is part of the line
             index = line.find('{')
             if index != -1:
                 metadata = line[:index]
@@ -30,24 +32,27 @@ with open(path, 'r') as log_data, open(output_path, 'w') as csvfile:
                 metadata = line
             line = line[len(metadata):]
 
-
-            payload = line
-            # currently doesnt account for depth of brackets
-            # ie finishes on finding the first } which is not the full end of the payload
-            # need to track the depth of brackets {}
-            depth = 1
-            while '}' not in payload:
-                payload += next(log_data)
+#           incase metadata eats the whole string
+            if len(line) == 0:
+                payload = next(log_data)
+            else:
+                payload = line
+            
+            # The payload is a nested json, need to track open and close paren    
+            depth = payload.count('{') - payload.count('}')
+            while depth > 0:
+                next_line = next(log_data)
+                payload += next_line
+                depth += next_line.count('{') - next_line.count('}')
 
 
             row = [game_num, metadata, payload]
             out_file.writerow(row)
 
+        # Looking for the start and stop of the match
         if line.startswith('[UnityCrossThreadLogger]STATE CHANGED {"old":"ConnectedToMatchDoor_ConnectedToGRE_Waiting","new":"Playing"}'):
             recording = True
         elif line.startswith('[UnityCrossThreadLogger]STATE CHANGED {"old":"Playing","new":"MatchCompleted"}'):
             recording = False
+            game_num += 1
 
-
-# Columns
-# game number, PlayerID, Timestamp, Meta data, payload
