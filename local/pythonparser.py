@@ -37,47 +37,80 @@ def parse_logs(input_path_file, output_path_file):
         out_file = csv.writer(csvfile)
         out_file.writerow(["game_num", "metadata", "payload"])
 
-        for line in log_data:
-            # skip these system messages
-            unwanted = ['ClientToGreuimessage', 'ClientToGremessage', '==>', 'Client.TcpConnection.Close']
-            payload = ''
-            if recording and line.startswith('[UnityCrossThreadLogger]') and not any(u in line for u in unwanted):    
-                # Dropping '[UnityCrossThreadLogger]'
-                line = line[24:]
+#       unwanted metadata/response types
+        unwanted = ['ClientToGreuimessage', 'ClientToGremessage', '==>', 'Client.TcpConnection.Close']
 
-                # Grabbing the metadata. Checking if the payload is part of the line
-                index = line.find('{')
-                if index != -1:
-                    metadata = line[:index]
-                else:
-                    metadata = line
-                line = line[len(metadata):]
+        # Convert file to an iterator to look ahead safely
+        log_iter = iter(log_data)
+        buffered_line = None
 
-    #           incase metadata eats the whole string
-                if len(line) == 0:
-                    payload = next(log_data)
-                else:
-                    payload = line
-                
-                # The payload is a nested json, need to track open and close paren    
-                depth = payload.count('{') - payload.count('}')
-                while depth > 0:
-                    next_line = next(log_data)
-                    payload += next_line
-                    depth += next_line.count('{') - next_line.count('}')
-
-
-                row = [game_num, metadata, payload]
-                out_file.writerow(row)
+        while True:
+            # grabbing the buffered line, and handling end of file
+            if buffered_line:
+                line = buffered_line
+                buffered_line = None
+            else:
+                try:
+                    line = next(log_iter)
+                except StopIteration:
+                    break
+                line = line.strip()
 
             # Looking for the start and stop of the match
             if line.startswith('[UnityCrossThreadLogger]STATE CHANGED {"old":"ConnectedToMatchDoor_ConnectedToGRE_Waiting","new":"Playing"}'):
                 recording = True
                 print('recording on')
-            elif line.startswith('[UnityCrossThreadLogger]STATE CHANGED {"old":"Playing","new":"MatchCompleted"}' or payload == '{"old":"Playing","new":"MatchCompleted"}'):
+                continue
+
+            if line.startswith('[UnityCrossThreadLogger]STATE CHANGED {"old":"Playing","new":"MatchCompleted"}'):
                 recording = False
                 print('recording off')
                 game_num += 1
+                continue
+
+            if not recording:
+                continue
+
+            # Skip unwanted lines
+            if not line.startswith('[UnityCrossThreadLogger]') or any(u in line for u in unwanted):
+                continue
+
+            # Droping [UnityCrossThreadLogger] prefix
+            line = line[24:]
+
+            # Extract metadata
+            index = line.find('{')
+            if index != -1:
+                metadata = line[:index]
+                payload = line[index:]
+            else:
+                metadata = line
+                try:
+                    next_line = next(log_iter).strip()
+                    # Stop if the next line is a state change
+                    if next_line.startswith('[UnityCrossThreadLogger]STATE CHANGED'):
+                        continue
+                    payload = next_line
+                except StopIteration:
+                    payload = ''
+
+            # The payload is a nested json, need to track open and close paren    
+            depth = payload.count('{') - payload.count('}')
+            while depth > 0:
+                try:
+                    next_line = next(log_iter).strip()
+                except StopIteration:
+                    break
+
+                # Stop if the next line is another response
+                if next_line.startswith('[UnityCrossThreadLogger]'):
+                    buffered_line = next_line
+                    break
+
+                payload += next_line
+                depth += next_line.count('{') - next_line.count('}')
+
+            out_file.writerow([game_num, metadata, payload])
 
 
 for file in raw_logs:
