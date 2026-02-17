@@ -1,0 +1,1 @@
+The parsed Player.log files are dumped here as .csv, but excluded from github via .gitignore

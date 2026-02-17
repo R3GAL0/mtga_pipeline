@@ -1,0 +1,1 @@
+The raw Player.log are dumped here, but excluded from github via .gitignore
