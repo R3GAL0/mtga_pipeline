@@ -12,7 +12,7 @@ import re
 
 # raw and output file paths
 raw_path = '/home/r3gal/develop/mtga_pipeline/data/raw'
-output_path = '/home/r3gal/develop/mtga_pipeline/data/upload'
+output_path = '/home/r3gal/develop/mtga_pipeline/data/parsed_csv'
 
 # filtering out the logs that were already processed/are present in the output_path
 raw_logs = os.listdir(path=raw_path)
