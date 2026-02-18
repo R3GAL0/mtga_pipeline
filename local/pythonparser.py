@@ -8,6 +8,7 @@
 import csv
 import os
 import json
+import re
 
 # raw and output file paths
 raw_path = '/home/r3gal/develop/mtga_pipeline/data/raw'
@@ -28,10 +29,14 @@ for item in output_files:
     if item in raw_logs:
         raw_logs.remove(item)
 
+match_start_pattern = re.compile(
+    r'^\[UnityCrossThreadLogger\]STATE CHANGED '
+    r'\{"old":"ConnectedToMatchDoor_(?:ConnectedToGRE_Waiting|ConnectingToGRE)","new":"Playing"\}'
+)
 
 def parse_logs(input_path_file, output_path_file):
     recording = False
-    game_num = 1
+    game_num = 0
     rows_written = 0
     print(input_path_file)
 
@@ -59,15 +64,17 @@ def parse_logs(input_path_file, output_path_file):
                 line = line.strip()
 
             # Looking for the start and stop of the match
-            if line.startswith('[UnityCrossThreadLogger]STATE CHANGED {"old":"ConnectedToMatchDoor_ConnectedToGRE_Waiting","new":"Playing"}'):
+            # the state doesnt always switch to 'ConnectedToMatchDoor_ConnectedToGRE_Waiting', 
+            # in cases of low latency/server load state will switch immediately from 'ConnectedToMatchDoor_ConnectingToGRE' to 'Playing'
+            if match_start_pattern.match(line):
                 recording = True
                 print('recording on')
+                game_num += 1
                 continue
 
             if line.startswith('[UnityCrossThreadLogger]STATE CHANGED {"old":"Playing","new":"MatchCompleted"}'):
                 recording = False
                 print('recording off')
-                game_num += 1
                 continue
 
             if not recording:
