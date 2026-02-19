@@ -1,3 +1,7 @@
+# This makes the dim_cards table
+# The default-cards-20260219100953.json was extracted from the scryfall api
+
+
 import json
 import pandas as pd
 

@@ -14,7 +14,7 @@ CREATE TABLE `mtgapipeline.mtga_silver.players` (
   region STRING                    -- Region the player connects from
 );
 
-CREATE TABLE `mtgapipeline.mtga_silver.cards` (
+CREATE TABLE `mtgapipeline.mtga_silver.dim_cards` (
   card_id INT64 NOT NULL,          -- PK
   card_name STRING,                -- Name of the Card
   card_type STRING,                -- Type on the Card (Land, Creature, Sorcery, Instant, etc)
@@ -32,6 +32,7 @@ CREATE TABLE `mtgapipeline.mtga_silver.matches` (
   loser_id STRING NOT NULL,         -- References players.player_id
   first_player_id STRING,           -- References players.player_id
   format STRING                     -- Match format (standard, historic, brawl, etc)
+  draw_order ARRAY                  -- The order of cards drawn during the match after the starting hand
 )
 PARTITION BY DATE(start_time)
 CLUSTER BY winner_id, loser_id;
@@ -41,15 +42,16 @@ CREATE TABLE `mtgapipeline.mtga_silver.decks` (
   player_id STRING NOT NULL,        -- FK, References players.player_id
   match_id INT64 NOT NULL,          -- FK, References matches.match_id
   legal_formats STRING              -- What formats the deck is legal in
+  deck_list ARRAY                   -- The arena_id and quantity of each card in the deck
 )
 CLUSTER BY player_id;
 
-CREATE TABLE `mtgapipeline.mtga_silver.deck_cards` (
-  deck_id INT64 NOT NULL,           -- PK, References decks.deck_id
-  card_id INT64 NOT NULL,           -- PK, References cards.card_id
-  card_quantity INT64               -- Number of this card in the deck (1-4)
-)
-CLUSTER BY deck_id;
+-- CREATE TABLE `mtgapipeline.mtga_silver.deck_cards` (
+--   deck_id INT64 NOT NULL,           -- PK, References decks.deck_id
+--   card_id INT64 NOT NULL,           -- PK, References cards.card_id
+--   card_quantity INT64               -- Number of this card in the deck (1-4)
+-- )
+-- CLUSTER BY deck_id;
 
 CREATE TABLE `mtgapipeline.mtga_silver.turn1_hands` (
   match_id INT64 NOT NULL,           -- PK, References matches.match_id
@@ -61,11 +63,11 @@ CREATE TABLE `mtgapipeline.mtga_silver.turn1_hands` (
 )
 CLUSTER BY match_id, player_id;
 
-CREATE TABLE `mtgapipeline.mtga_silver.rank_progression` (
-  player_id STRING NOT NULL,         -- PK, References players.player_id
-  rank_dt TIMESTAMP NOT NULL,        -- PK, timestamp when this rank was achieved
-  rank_tier STRING,                  -- The tier of the rank (Gold 4, Plat 1, etc)
-  rank_sub_tier STRING               -- The number of pips within that tier (0-6)
-)
-PARTITION BY DATE(rank_dt)
-CLUSTER BY player_id;
+-- CREATE TABLE `mtgapipeline.mtga_silver.rank_progression` (
+--   player_id STRING NOT NULL,         -- PK, References players.player_id
+--   rank_dt TIMESTAMP NOT NULL,        -- PK, timestamp when this rank was achieved
+--   rank_tier STRING,                  -- The tier of the rank (Gold 4, Plat 1, etc)
+--   rank_sub_tier STRING               -- The number of pips within that tier (0-6)
+-- )
+-- PARTITION BY DATE(rank_dt)
+-- CLUSTER BY player_id;

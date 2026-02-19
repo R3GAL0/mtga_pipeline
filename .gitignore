@@ -3,6 +3,8 @@
 *.csv
 *.json
 *.parquet
+*.duckdb
+*.duckdb.wal
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

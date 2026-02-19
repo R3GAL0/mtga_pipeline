@@ -50,6 +50,8 @@ def parse_logs(input_path_file, output_path_file):
         # Convert file to an iterator to look ahead safely
         log_iter = iter(log_data)
         buffered_line = None
+        deck_list = ''
+
 
         while True:
             # grabbing the buffered line, and handling end of file
@@ -62,6 +64,12 @@ def parse_logs(input_path_file, output_path_file):
                 except StopIteration:
                     break
                 line = line.strip()
+
+            # I want to grab this line prior to recording, it contains the deck list
+            # ==> DeckUpsertDeckV2        
+            if '[UnityCrossThreadLogger]==> DeckUpsertDeckV2' in line:
+                deck_list = line 
+                continue
 
             # Looking for the start and stop of the match
             # the state doesnt always switch to 'ConnectedToMatchDoor_ConnectedToGRE_Waiting', 
@@ -84,6 +92,8 @@ def parse_logs(input_path_file, output_path_file):
             if not line.startswith('[UnityCrossThreadLogger]') or any(u in line for u in unwanted):
                 continue
 
+            # A match has started, now parsing the lines and recording
+
             # Droping [UnityCrossThreadLogger] prefix
             line = line[24:]
 
@@ -103,6 +113,21 @@ def parse_logs(input_path_file, output_path_file):
                 except StopIteration:
                     payload = ''
 
+
+            # splitting metadata into timestamp, player_id and event columns
+            metadata_split = metadata.split(': ')
+            if len(metadata_split[1].split(' ')) == 3:
+                metadata_split[1] = metadata_split[1].split(' ')[2]
+
+            # a match started, writing the last found deck list as the first line of the game
+            if len(deck_list) > 1:
+                # trim to only the payload
+                deck_list = deck_list[deck_list.find('{'):]
+
+                out_file.writerow([game_num, metadata_split[1], metadata_split[0], 'deck_list', deck_list])
+                deck_list = ''
+
+
             # The payload is a nested json, need to track open and close paren    
             depth = payload.count('{') - payload.count('}')
             while depth > 0:
@@ -119,10 +144,6 @@ def parse_logs(input_path_file, output_path_file):
                 payload += next_line
                 depth += next_line.count('{') - next_line.count('}')
 
-            # splitting metadata into timestamp, player_id and event columns
-            metadata_split = metadata.split(': ')
-            if len(metadata_split[1].split(' ')) == 3:
-                metadata_split[1] = metadata_split[1].split(' ')[2]
 
             # check payload for valid requestid, if missing then drop row 
             # (signals it is just a timer event aka a player went on the rope and a timer was displayed )

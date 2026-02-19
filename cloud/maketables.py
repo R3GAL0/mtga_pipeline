@@ -3,57 +3,82 @@
 # Use cloud functions ??
 
 import pandas as pd
+import duckdb
+import json
 
+# Connect to persistent DuckDB database
+conn = duckdb.connect(database='mtga_local.duckdb')
 
 # read each csv 1 game at a time and partition into the correct tables
 
 
-# what tables do I want?
+csv_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv/Filtered_Player_20260212_233143_test.csv"
 
-# players table
-    # player_id
-    # display_name
-    # region ??
 
-# cards table 
-#     card_id
-#     card_name
-#     card_type (land, creature, sorcery, instant)
-#     mana_cost (2BB ->  2 colorless, 2 black mana)
-#         how to do variable mana (ie pay BB, UU, or BU)??
-#     card_set (which set the card was released in)
-#     legal_formats
-#     card_color (UWBGR, C) -> C = colorless
+# For each game
+# save the deck_list in decks
+# save the mulligans
+# save the match details in matches
+#   card draws -> draw_order
 
-# decks table
-#     deck_id
-#     player_id
-#     match_id
-#     format (what formats the deck is for)
+# add a new player to players if no match was found for player_id
 
-# deck_cards
-#     deck_id
-#     card_id
-#     quantity
+# The csv will contain at min 1 game, can contain more
+def load_csv_to_sql (csv_path):
+    dtype_map = {
+        'game_num': 'Int64',
+        'timestamp': 'str',
+        'event': 'str',
+        'payload': 'str'
+    }
+    df = pd.read_csv(csv_path, dtype=dtype_map)
+    df['payload'] = df['payload'].apply(json.loads)
 
-# matches table (1 row per match)
-#     match_id 
-#     timestamp 
-#     winner_id
-#     loser_id
-#     first_player_id
-#     format
+    # group by game_num
+    for game_num, group_df in df.groupby("game_num"):
+        pass
+    
 
-# turn1_hands table (1 row for inital hand and a second/third for each mulligan)
-#     match_id
-#     player_id
-#     inital_hand
-#     mulligans
-#     final_hand
-#     went_first
+    pass
 
-# rank_progression table (optional/stretch goal)
-#     player_id
-#     timestamp
-#     rank_tier
-#     rank_sub_tier
+
+# returns the next_deck_id, incremented
+row = conn.execute("SELECT COALESCE(MAX(deck_id), 0) FROM decks").fetchone()
+next_deck_id = row[0] + 1
+def insert_deck (conn, df, player_id, match_id, next_deck_id):
+    deck_obj = df.iloc[0]['payload'].get('request')
+    nested = json.loads(deck_obj)
+
+    # Gets the array of the main deck: cardId and quantity are keys
+    # [{'cardId': 95192, 'quantity': 9},
+    #  {'cardId': 93715, 'quantity': 1},
+    #  {'cardId': 95200, 'quantity': 6}]
+
+    deck_name = nested.get('Summary').get('Name')
+    deck_list = nested.get('Deck').get('MainDeck')
+    deck_sideboard = nested.get('Deck').get('Sideboard')
+    deck_commander = nested.get('Deck').get('CommandZone')
+
+    # convert to string for insertion
+    deck_list_json = json.dumps(deck_list) if deck_list else None
+    deck_sideboard_json = json.dumps(deck_sideboard) if deck_sideboard else None
+    deck_commander_json = json.dumps(deck_commander) if deck_commander else None
+
+    conn.execute(
+        "INSERT INTO decks (deck_id, player_id, match_id, deck_list, deck_sideboard, deck_commander) VALUES (?, ?, ?, ?, ?, ?)",
+        (next_deck_id, player_id, match_id, deck_list, deck_sideboard, deck_commander)
+        )
+    return next_deck_id + 1
+
+# attempts to insert player, will skip if player_id is non_unique
+def insert_player (conn, player_id, display_name, region):
+    conn.execute(
+        """
+        INSERT INTO players (player_id, display_name, region)
+        SELECT ?, ?, ?
+        WHERE NOT EXISTS (
+            SELECT 1 FROM players WHERE player_id = ?
+        )
+        """,
+        (str(player_id), str(display_name), str(region), str(player_id))
+    )
