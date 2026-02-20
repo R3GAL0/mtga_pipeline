@@ -24,7 +24,7 @@ CREATE TABLE dim_cards (
     released_at DATE,
     scryfall_uri VARCHAR,
     mana_cost VARCHAR,
-    cmc DOUBLE,
+    cmc INTEGER,
     colors VARCHAR,
     color_identity VARCHAR,
     type_line VARCHAR,
@@ -39,7 +39,7 @@ CREATE TABLE matches (
     match_id BIGINT PRIMARY KEY,
     deck_id BIGINT NOT NULL,
     start_time TIMESTAMP NOT NULL,
-    duration BIGINT,
+    duration INTEGER,               -- SECONDS
     winner_id VARCHAR NOT NULL,
     loser_id VARCHAR NOT NULL,
     first_player_id VARCHAR,
@@ -58,10 +58,10 @@ CREATE TABLE decks (
 
 CREATE TABLE turn1_hands (
     hand_id BIGINT PRIMARY KEY,
-    match_id BIGINT NOT NULL,
     player_id VARCHAR NOT NULL,
-    initial_hand VARCHAR,
-    mulligans BIGINT,
+    match_id BIGINT NOT NULL,
+    initial_hand VARCHAR NOT NULL,
+    mulligans INTEGER,
     final_hand VARCHAR,
     went_first BOOLEAN
 );

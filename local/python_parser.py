@@ -42,7 +42,7 @@ def parse_logs(input_path_file, output_path_file):
 
     with open(input_path_file, 'r') as log_data, open(output_path_file, 'w') as csvfile:
         out_file = csv.writer(csvfile)
-        out_file.writerow(["game_num", "player_id", "timestamp", "event", "payload"])
+        out_file.writerow(["game_num", "player_id", "timestamp", "event", "payload", "payload_type"])
 
 #       unwanted metadata/response types
         unwanted = ['ClientToGreuimessage', 'ClientToGremessage', '==>', 'Client.TcpConnection.Close']
@@ -121,8 +121,8 @@ def parse_logs(input_path_file, output_path_file):
 
             # a match started, writing the last found deck list as the first line of the game
             if len(deck_list) > 1:
-                # trim to only the payload
-                deck_list = deck_list[deck_list.find('{'):]
+                # trim to only the payload, wrap in a 'list' to explode payload column later
+                deck_list = '[' + deck_list[deck_list.find('{'):] + ']'
 
                 out_file.writerow([game_num, metadata_split[1], metadata_split[0], 'deck_list', deck_list])
                 deck_list = ''
@@ -156,15 +156,17 @@ def parse_logs(input_path_file, output_path_file):
                 if metadata_split[2] == 'GreToClientEvent':
                     payload_str = json.dumps(payload_json['greToClientEvent']['greToClientMessages'])
                 elif metadata_split[2] == 'MatchGameRoomStateChangedEvent':
-                    payload_str = json.dumps(payload_json['matchGameRoomStateChangedEvent']['gameRoomInfo'])
+                    # wrapping in a list to explode later
+                    payload_str = '[' + json.dumps(payload_json['matchGameRoomStateChangedEvent']['gameRoomInfo']) + ']'
                 else:
                     payload_str = json.dumps(payload_json)
 
 #           If a player causes > 50 events in one turn a JSON object will not be returned
             except json.JSONDecodeError:
-                payload_str = payload
-
-            out_file.writerow([game_num, metadata_split[1], metadata_split[0], metadata_split[2], payload_str])
+                # payload_str = payload
+                payload_str = json.dumps(payload)
+            payload_str = json.dumps(payload)
+            out_file.writerow([game_num, metadata_split[1], metadata_split[0], metadata_split[2], payload_str, type(payload_str)])
             rows_written += 1
     # removing files that have no games, both .log and .csv are deleted
     if rows_written == 0:

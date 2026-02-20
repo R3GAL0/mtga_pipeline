@@ -6,4 +6,4 @@ The ETL Pipeline Diagram is visualized [here](mtga_pipeline_flow.drawio.png)
 
 ## Database Schema
 
-The silver-layer schema is visualized in [ERD](erd_silver.png).
+The silver-layer schema is visualized in [ERD](erd_silver.png). (outdated)
