@@ -61,7 +61,7 @@ CREATE TABLE turn1_hands (
     player_id VARCHAR NOT NULL,
     match_id BIGINT NOT NULL,
     initial_hand VARCHAR NOT NULL,
-    mulligans INTEGER,
+    mulliganCount INTEGER,
     final_hand VARCHAR,
     went_first BOOLEAN
 );
