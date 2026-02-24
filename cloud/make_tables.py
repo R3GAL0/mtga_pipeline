@@ -45,11 +45,10 @@ def load_csv_to_sql (csv_path):
     pass
 
 
-# returns the next_deck_id, incremented
-row = conn.execute("SELECT COALESCE(MAX(deck_id), 0) FROM decks").fetchone()
-next_deck_id = row[0] + 1
-def insert_deck (conn, df, player_id, match_id, next_deck_id):
-    deck_obj = df.iloc[0]['payload'].get('request')
+# returns the deck_id, of the new deck or matching old deck
+def insert_deck (conn, df, player_id, match_id):
+
+    deck_obj = df.iloc[0]['payload'].get('request') 
     nested = json.loads(deck_obj)
 
     # Gets the array of the main deck: cardId and quantity are keys
@@ -67,11 +66,28 @@ def insert_deck (conn, df, player_id, match_id, next_deck_id):
     deck_sideboard_json = json.dumps(deck_sideboard) if deck_sideboard else None
     deck_commander_json = json.dumps(deck_commander) if deck_commander else None
 
+#   checking if the deck already exists, returning the deck_id if it does
+    old_deck = conn.execute("""
+        SELECT deck_id from decks 
+        WHERE deck_name = ?
+        and deck_list = ?
+        and deck_sideboard = ?
+        and deck_commander = ?
+        """,
+        (deck_name, deck_list_json, deck_sideboard_json, deck_commander_json)
+        ).fetchone()
+    if len(old_deck) > 0:
+        return old_deck[0]
+
+#   else getting the most recent deck_id and inserting the new deck
+    row = conn.execute("SELECT COALESCE(MAX(deck_id), 0) FROM decks").fetchone()
+    next_deck_id = row[0] + 1
+
     conn.execute(
         "INSERT INTO decks (deck_id, player_id, match_id, deck_list, deck_sideboard, deck_commander) VALUES (?, ?, ?, ?, ?, ?)",
         (next_deck_id, player_id, match_id, deck_list, deck_sideboard, deck_commander)
         )
-    return next_deck_id + 1
+    return next_deck_id
 
 # attempts to insert player, will skip if player_id is non_unique
 def insert_player (conn, player_id, display_name, region):

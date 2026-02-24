@@ -38,13 +38,13 @@ CREATE TABLE dim_cards (
 CREATE TABLE matches (
     match_id BIGINT PRIMARY KEY,
     deck_id BIGINT NOT NULL,
+    player_id VARCHAR,
+    player_seat INTEGER,            -- 1 or 2
     start_time TIMESTAMP NOT NULL,
     duration INTEGER,               -- SECONDS
-    winner_id VARCHAR NOT NULL,
-    loser_id VARCHAR NOT NULL,
-    first_player_id VARCHAR,
+    winner_seat VARCHAR,            -- 1 or 2
     format VARCHAR,
-    draw_order VARCHAR
+    draw_order VARCHAR              -- to be implemented
 );
 
 CREATE TABLE decks (
