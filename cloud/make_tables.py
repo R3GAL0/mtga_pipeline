@@ -107,7 +107,7 @@ def insert_player (conn, player_id, display_name, region):
 def insert_turn1_hands(conn, df, match_id):
 
 #   get the next hand_id
-    hand_id = conn.execute("SELECT COALESCE(MAX(deck_id), 0) FROM decks").fetchone()[0] + 1
+    hand_id = conn.execute("SELECT COALESCE(MAX(hand_id), 0) FROM turn1_hands").fetchone()[0] + 1
 
     # used to pull out the player hand objects from the nested payload
     def has_hand_zone(payload_line):
