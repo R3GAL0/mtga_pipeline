@@ -103,8 +103,11 @@ def insert_player (conn, player_id, display_name, region):
     )
 
 
-# it will return the next hand_id
-def insert_turn1_hands(conn, df, hand_id, match_id):
+# it will insert all the hands for the game with unique hand_ids
+def insert_turn1_hands(conn, df, match_id):
+
+#   get the next hand_id
+    hand_id = conn.execute("SELECT COALESCE(MAX(deck_id), 0) FROM decks").fetchone()[0] + 1
 
     # used to pull out the player hand objects from the nested payload
     def has_hand_zone(payload_line):
@@ -261,4 +264,4 @@ def insert_turn1_hands(conn, df, hand_id, match_id):
             (int(item.get('hand_id')), str(player_id), int(match_id), str(item.get('init_hand')), 
             int(item.get('mulliganCount')), str(item.get('limbo_hand')), str(went_first)
         ))
-    return hands_dict.get('hand_id').iloc[-1] +1
+    # return hands_dict.get('hand_id').iloc[-1] +1
