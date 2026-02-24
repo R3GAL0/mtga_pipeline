@@ -46,8 +46,9 @@ def load_csv_to_sql (csv_path):
 
 
 # returns the deck_id, of the new deck or matching old deck
-def insert_deck (conn, df, player_id, match_id):
+def insert_deck (conn, df, match_id):
 
+    player_id = df.iloc[0]['player_id']
     deck_obj = df.iloc[0]['payload'].get('request') 
     nested = json.loads(deck_obj)
 
@@ -265,3 +266,60 @@ def insert_turn1_hands(conn, df, match_id):
             int(item.get('mulliganCount')), str(item.get('limbo_hand')), str(went_first)
         ))
     # return hands_dict.get('hand_id').iloc[-1] +1
+
+
+# inserts a match into the db
+# returns a match_id for the match
+def insert_match (conn, df):
+    df['payload'] = df['payload'].apply(ast.literal_eval)
+
+    # intake = conn, df
+
+    match_id = conn.execute("SELECT COALESCE(MAX(match_id), 0) FROM matches").fetchone()[0] + 1
+    player_id = df.iloc[0]['player_id']
+    deck_id = insert_deck(conn, df, match_id)
+
+    df['timestamp_f'] =  pd.to_datetime(
+        df['timestamp'],
+        format='%m/%d/%Y %I:%M:%S %p'
+        )
+    start_time = df.iloc[0]['timestamp_f']
+
+    duration = df.iloc[-1]['timestamp_f'] - df.iloc[0]['timestamp_f']
+    duration_seconds = int(duration.total_seconds())
+
+    attributes = json.loads(df['payload'].iloc[0]['request']).get('Summary').get('Attributes')
+    game_format = next(
+        (attr['value'] for attr in attributes if attr['name'] == 'Format'),
+        None
+    )
+
+    player_seat = 0
+    players = df['payload'].iloc[-1].get('gameRoomConfig').get('reservedPlayers')
+    # print(players)
+    for item in players:
+        if item.get('userId') == player_id:
+            player_seat = item.get('systemSeatId')
+
+    # winner_seat
+    # 'MatchScope_Game' -> Is the result of one game in a match (can be 1 or 3 games per match)
+    match_results = df['payload'].iloc[-1].get('finalMatchResult').get('resultList')
+    winner_seat = 0
+    for item in match_results:
+        if item.get('scope') == 'MatchScope_Match':
+            winner_seat = item.get('winningTeamId')
+
+    # draw_order ??
+    #   extra goal
+
+
+    # will change draw_order after implementation
+    draw_order = ''
+    conn.execute(
+        """
+        INSERT INTO matches (match_id, deck_id, player_id, player_seat, start_time, duration, winner_seat, game_format, draw_order)
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+        """,
+        (int(match_id), int(deck_id), str(player_id), int(player_seat), start_time, int(duration_seconds), int(winner_seat), str(game_format), str(draw_order))
+    )
+    return match_id
