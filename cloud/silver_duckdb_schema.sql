@@ -13,8 +13,8 @@ DROP TABLE IF EXISTS players;
 
 CREATE TABLE players (
     player_id VARCHAR PRIMARY KEY,
-    display_name VARCHAR,
-    region VARCHAR
+    display_name VARCHAR
+    -- region VARCHAR
 );
 
 CREATE TABLE dim_cards (
@@ -51,6 +51,7 @@ CREATE TABLE decks (
     deck_id  BIGINT PRIMARY KEY,
     player_id VARCHAR NOT NULL,
     match_id BIGINT NOT NULL,
+    deck_name VARCHAR,
     deck_list VARCHAR,
     deck_sideboard VARCHAR,
     deck_commander VARCHAR

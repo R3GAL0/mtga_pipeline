@@ -8,14 +8,12 @@ import json
 import numpy as np
 import ast
 from collections import Counter
+import re
 
 # Connect to persistent DuckDB database
-conn = duckdb.connect(database='mtga_local.duckdb')
+
 
 # read each csv 1 game at a time and partition into the correct tables
-
-
-csv_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv/Filtered_Player_20260212_233143_test.csv"
 
 
 # For each game
@@ -26,24 +24,45 @@ csv_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv/Filtered_Player_20
 
 # add a new player to players if no match was found for player_id
 
-# The csv will contain at min 1 game, can contain more
-def load_csv_to_sql (csv_path):
-    dtype_map = {
-        'game_num': 'Int64',
-        'timestamp': 'str',
-        'event': 'str',
-        'payload': 'str'
-    }
-    df = pd.read_csv(csv_path, dtype=dtype_map)
-    df['payload'] = df['payload'].apply(json.loads)
 
-    # group by game_num
-    for game_num, group_df in df.groupby("game_num"):
-        pass
+def main():
     
+    conn = duckdb.connect(database='mtga_local.duckdb')
 
-    pass
+    in_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv"
 
+    # read 1 csv at a time, split into one game each, feed to the functions
+    csv_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv/Filtered_Player_20260212_233143_test.csv"
+    
+    df_temp = pd.read_csv(csv_path)
+    df_temp['payload'] = df_temp['payload'].apply(parse_payload)
+    df = df_temp.explode('payload').reset_index(drop=True)
+
+    insert_player(conn, df)
+    match_id = insert_match(conn, df)
+    insert_turn1_hands(conn, df, match_id)
+
+    conn.close()
+# loop through the /data/parsend_csv
+
+def parse_payload(s):
+    """Convert string payload to Python object."""
+    if not isinstance(s, str):
+        return s  # already parsed
+    # Fix JSON/Python boolean/null differences
+    s = s.replace("None", "null").replace("True", "true").replace("False", "false")
+    # Convert single quotes to double quotes for JSON
+    s = re.sub(r"(?<!\\)'", '"', s)
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        # fallback for messy Python-style strings
+        import ast
+        try:
+            return ast.literal_eval(s)
+        except Exception:
+            print("Failed to parse payload:", s)
+            return []
 
 # returns the deck_id, of the new deck or matching old deck
 def insert_deck (conn, df, match_id):
@@ -77,7 +96,7 @@ def insert_deck (conn, df, match_id):
         """,
         (deck_name, deck_list_json, deck_sideboard_json, deck_commander_json)
         ).fetchone()
-    if len(old_deck) > 0:
+    if old_deck is not None:
         return old_deck[0]
 
 #   else getting the most recent deck_id and inserting the new deck
@@ -85,22 +104,33 @@ def insert_deck (conn, df, match_id):
     next_deck_id = row[0] + 1
 
     conn.execute(
-        "INSERT INTO decks (deck_id, player_id, match_id, deck_list, deck_sideboard, deck_commander) VALUES (?, ?, ?, ?, ?, ?)",
-        (next_deck_id, player_id, match_id, deck_list, deck_sideboard, deck_commander)
+        "INSERT INTO decks (deck_id, player_id, match_id, deck_name, deck_list, deck_sideboard, deck_commander) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (next_deck_id, player_id, match_id, deck_name, deck_list, deck_sideboard, deck_commander)
         )
     return next_deck_id
 
 # attempts to insert player, will skip if player_id is non_unique
-def insert_player (conn, player_id, display_name, region):
+def insert_player (conn, df):
+
+    player_id = df.iloc[0]['player_id']
+    # df['payload'] = df['payload'].apply(json.loads)
+    # df['payload'] = df['payload'].apply(ast.literal_eval)
+
+    players = df.iloc[-1]['payload'].get('gameRoomConfig').get('reservedPlayers')
+    display_name = ''
+    for item in players:
+        if item.get('userId') == player_id:
+            display_name = item.get('playerName')
+
     conn.execute(
         """
-        INSERT INTO players (player_id, display_name, region)
-        SELECT ?, ?, ?
+        INSERT INTO players (player_id, display_name)
+        SELECT ?, ?
         WHERE NOT EXISTS (
             SELECT 1 FROM players WHERE player_id = ?
         )
         """,
-        (str(player_id), str(display_name), str(region), str(player_id))
+        (str(player_id), str(display_name), str(player_id))
     )
 
 
@@ -140,7 +170,7 @@ def insert_turn1_hands(conn, df, match_id):
         return turn.get('phase') == 'Phase_Beginning'
 
 
-    df['payload'] = df['payload'].apply(ast.literal_eval)
+    # df['payload'] = df['payload'].apply(ast.literal_eval)
 
 #   Getting all the payloads for the hand selection phase
     end_idx = df[df['payload'].apply(is_beginning_phase).values]
@@ -270,8 +300,9 @@ def insert_turn1_hands(conn, df, match_id):
 
 # inserts a match into the db
 # returns a match_id for the match
+# executes the insert_deck function
 def insert_match (conn, df):
-    df['payload'] = df['payload'].apply(ast.literal_eval)
+    # df['payload'] = df['payload'].apply(ast.literal_eval)
 
     # intake = conn, df
 
@@ -323,3 +354,7 @@ def insert_match (conn, df):
         (int(match_id), int(deck_id), str(player_id), int(player_seat), start_time, int(duration_seconds), int(winner_seat), str(game_format), str(draw_order))
     )
     return match_id
+
+if __name__ == "__main__":
+    main()
+    
