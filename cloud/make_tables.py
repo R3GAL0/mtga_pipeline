@@ -5,13 +5,8 @@
 import pandas as pd
 import duckdb
 import json
-import numpy as np
-import ast
 from collections import Counter
-import re
-
-# Connect to persistent DuckDB database
-
+import os
 
 # read each csv 1 game at a time and partition into the correct tables
 
@@ -29,64 +24,70 @@ def main():
     
     conn = duckdb.connect(database='mtga_local.duckdb')
 
-    in_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv"
-
-    # read 1 csv at a time, split into one game each, feed to the functions
-    csv_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv/Filtered_Player_20260212_233143_test.csv"
+    input_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv"
+    file_list = os.listdir(path=input_path)
     
-    df_temp = pd.read_csv(csv_path)
-    df_temp['payload'] = df_temp['payload'].apply(parse_payload)
-    df = df_temp.explode('payload').reset_index(drop=True)
+    # read 1 csv at a time, split into one game each, feed to the functions
+    for file in file_list:
+        # csv_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv/Filtered_Player_20260212_233143_test.csv"
+        print("Processing: " + file)
+        
+        df_temp = pd.read_csv(f"{input_path}/{file}")
 
-    insert_player(conn, df)
-    match_id = insert_match(conn, df)
-    insert_turn1_hands(conn, df, match_id)
+        # the truncated payload breaks json.loads -> dropping these rows
+        df_temp = df_temp[df_temp["payload"] != '[Message summarized because one or more GameStateMessages exceeded the 50 GameObject or 50 Annotation limit.]']
+        df_temp['payload'] = df_temp['payload'].apply(json.loads)
+        df = df_temp.explode('payload').reset_index(drop=True)
+        # print(str(type(
+        #     df['payload'].iloc[0])) + '\n\n'
+        # )
+        # print(str(type(
+        #     df['payload'].iloc[-1])) + '\n\n'
+        # )
+
+        for game_num, df_part in df.groupby('game_num'):
+            insert_player(conn, df_part)
+            match_id = insert_match(conn, df_part)
+            insert_turn1_hands(conn, df_part, match_id)
+
 
     conn.close()
-# loop through the /data/parsend_csv
 
-def parse_payload(s):
-    """Convert string payload to Python object."""
-    if not isinstance(s, str):
-        return s  # already parsed
-    # Fix JSON/Python boolean/null differences
-    s = s.replace("None", "null").replace("True", "true").replace("False", "false")
-    # Convert single quotes to double quotes for JSON
-    s = re.sub(r"(?<!\\)'", '"', s)
-    try:
-        return json.loads(s)
-    except json.JSONDecodeError:
-        # fallback for messy Python-style strings
-        import ast
-        try:
-            return ast.literal_eval(s)
-        except Exception:
-            print("Failed to parse payload:", s)
-            return []
 
 # returns the deck_id, of the new deck or matching old deck
 def insert_deck (conn, df, match_id):
 
     player_id = df.iloc[0]['player_id']
     deck_obj = df.iloc[0]['payload'].get('request') 
-    nested = json.loads(deck_obj)
+    
+    # There are event mode games where a decklist is not in the payloads (Ie the Jump-In event)
+    # For these cases input a blank deck list
+    try:
+        nested = json.loads(deck_obj)
 
-    # Gets the array of the main deck: cardId and quantity are keys
-    # [{'cardId': 95192, 'quantity': 9},
-    #  {'cardId': 93715, 'quantity': 1},
-    #  {'cardId': 95200, 'quantity': 6}]
+        deck_name = nested.get('Summary').get('Name')
+        deck_list = nested.get('Deck').get('MainDeck')
+        deck_sideboard = nested.get('Deck').get('Sideboard')
+        deck_commander = nested.get('Deck').get('CommandZone')
 
-    deck_name = nested.get('Summary').get('Name')
-    deck_list = nested.get('Deck').get('MainDeck')
-    deck_sideboard = nested.get('Deck').get('Sideboard')
-    deck_commander = nested.get('Deck').get('CommandZone')
+        # convert to string for insertion
+        deck_list_json = json.dumps(deck_list) if deck_list else None
+        deck_sideboard_json = json.dumps(deck_sideboard) if deck_sideboard else None
+        deck_commander_json = json.dumps(deck_commander) if deck_commander else None
 
-    # convert to string for insertion
-    deck_list_json = json.dumps(deck_list) if deck_list else None
-    deck_sideboard_json = json.dumps(deck_sideboard) if deck_sideboard else None
-    deck_commander_json = json.dumps(deck_commander) if deck_commander else None
 
-#   checking if the deck already exists, returning the deck_id if it does
+    except:
+        deck_name = 'Blank'
+        deck_list = ''
+        deck_sideboard = ''
+        deck_commander = ''
+        deck_list_json = ''
+        deck_sideboard_json = ''
+        deck_commander_json = ''
+
+
+
+    #   checking if the deck already exists, returning the deck_id if it does
     old_deck = conn.execute("""
         SELECT deck_id from decks 
         WHERE deck_name = ?
@@ -99,7 +100,7 @@ def insert_deck (conn, df, match_id):
     if old_deck is not None:
         return old_deck[0]
 
-#   else getting the most recent deck_id and inserting the new deck
+    #   else getting the most recent deck_id and inserting the new deck
     row = conn.execute("SELECT COALESCE(MAX(deck_id), 0) FROM decks").fetchone()
     next_deck_id = row[0] + 1
 
@@ -113,9 +114,8 @@ def insert_deck (conn, df, match_id):
 def insert_player (conn, df):
 
     player_id = df.iloc[0]['player_id']
-    # df['payload'] = df['payload'].apply(json.loads)
-    # df['payload'] = df['payload'].apply(ast.literal_eval)
 
+    # print(type(df.iloc[-1]['payload']))
     players = df.iloc[-1]['payload'].get('gameRoomConfig').get('reservedPlayers')
     display_name = ''
     for item in players:
@@ -137,7 +137,7 @@ def insert_player (conn, df):
 # it will insert all the hands for the game with unique hand_ids
 def insert_turn1_hands(conn, df, match_id):
 
-#   get the next hand_id
+    # get the next hand_id
     hand_id = conn.execute("SELECT COALESCE(MAX(hand_id), 0) FROM turn1_hands").fetchone()[0] + 1
 
     # used to pull out the player hand objects from the nested payload
@@ -156,6 +156,9 @@ def insert_turn1_hands(conn, df, match_id):
 
     # detects the final hand/begining of the actual play phase
     def is_beginning_phase(payload_line):
+        # print(type(payload_line))
+        if str(type(payload_line)) != "<class 'dict'>":
+            return False
         if payload_line.get('type') != 'GREMessageType_GameStateMessage':
             return False
         
@@ -169,29 +172,40 @@ def insert_turn1_hands(conn, df, match_id):
         
         return turn.get('phase') == 'Phase_Beginning'
 
+    # Getting all the payloads for the hand selection phase
+    # end_idx = df[df['payload'].apply(is_beginning_phase).values]
+    # final_hand = end_idx.index[0] + 1
+    # df_next = df.iloc[:final_hand]
 
-    # df['payload'] = df['payload'].apply(ast.literal_eval)
+    # df_hands = df_next[df_next['payload'].apply(has_hand_zone).values][1:]
 
-#   Getting all the payloads for the hand selection phase
-    end_idx = df[df['payload'].apply(is_beginning_phase).values]
-    final_hand = end_idx.index[0] + 1
-    df_next = df.iloc[:final_hand]
+    # chat version
+    beginning_idx = df[df['payload'].apply(is_beginning_phase)].index.min()
+    df_until_beginning = df.loc[:beginning_idx]
+    df_hands = df_until_beginning[df_until_beginning['payload'].apply(has_hand_zone)].iloc[1:]
 
-    df_hands = df_next[df_next['payload'].apply(has_hand_zone).values][1:]
 
-#   grabbing some useful values, will be used when writing to the table
+    #   grabbing some useful values, will be used when writing to the table
     player_id = df_hands.iloc[0]['player_id']
     seatID = df_hands['payload'].iloc[0].get('systemSeatIds')[0]
 
 
-#   Making a mapping variable to map instanceId of a card to its grpId (arena_id)
+    #   Making a mapping variable to map instanceId of a card to its grpId (arena_id)
     gameObjectMap = {}
     for item in df_hands['payload']:
-        for sub_item in item.get('gameStateMessage').get('gameObjects'):
+        game_state = item.get('gameStateMessage')
+        if not game_state:
+            continue
+
+        game_objects = game_state.get('gameObjects')
+        if not game_objects:
+            continue
+
+        for sub_item in game_objects:
             gameObjectMap[sub_item.get('instanceId')] = sub_item.get('grpId')
 
 
-#   Puting the contents of the hands into separate columns for easy indexing
+    #   Puting the contents of the hands into separate columns for easy indexing
 
     # zoneId = 31 -> player 1 hand
     # zoneId = 35 -> player 2 hand
@@ -212,8 +226,8 @@ def insert_turn1_hands(conn, df, match_id):
     df_hands['hand_p2'] = df_hands['payload'].apply(get_zones, args=('p2',))
     df_hands['hand_limbo'] = df_hands['payload'].apply(get_zones, args=('limbo',))
 
-#   Mapping the grpid (unique card identifier) to the objectInstanceIds (in game object identifier)
-#   grpid is eqivalent to arena_id from dim_cards table
+    #   Mapping the grpid (unique card identifier) to the objectInstanceIds (in game object identifier)
+    #   grpid is eqivalent to arena_id from dim_cards table
     def map_grpid(hand, grpid_map): 
         if hand is None: 
             return None 
@@ -246,10 +260,24 @@ def insert_turn1_hands(conn, df, match_id):
 
     df_hands['player'] = df_hands.apply(player_details, axis=1)
 
-#   Formatting the hands_dict for easier writting to table/disk
+    #   Formatting the hands_dict for easier writting to table/disk
     hands_dict = []
     last_hand = []
     for index, row in df_hands.iterrows():
+        # print(str(row) + '\n\n')
+        if 'mulliganCount' not in locals():
+            mulliganCount = 0
+        try:
+            mulliganCount = row['player'].get('mulliganCount', 0)
+        except:
+            pass
+        
+        if 'player_num' not in locals():
+            player_num = 0
+        try:
+            player_num = row['player'].get('systemSeatNumber')
+        except:
+            pass
 
         if row['hand_p1_grpid'] is not None:
             # removing the last hand if it is the same and stepping back hand_id (only happens with mulligans)
@@ -257,12 +285,13 @@ def insert_turn1_hands(conn, df, match_id):
                 hands_dict.pop()
                 hand_id -= 1
 
+
             hands_dict.append({
                 'hand_id':hand_id,
                 'init_hand': row['hand_p1_grpid'],
-                'mulliganCount': row['player'].get('mulliganCount', 0),
+                'mulliganCount': mulliganCount,
                 'limbo_hand': row['hand_limbo_grpid'],
-                'player_num': row['player'].get('systemSeatNumber')
+                'player_num': player_num
             })
             last_hand = row['hand_p1_grpid']
 
@@ -275,13 +304,14 @@ def insert_turn1_hands(conn, df, match_id):
             hands_dict.append({
                 'hand_id':hand_id,
                 'init_hand': row['hand_p2_grpid'],
-                'mulliganCount': row['player'].get('mulliganCount', 0),
+                'mulliganCount': mulliganCount,
                 'limbo_hand': row['hand_limbo_grpid'],
+                'player_num': player_num
             })
             last_hand = row['hand_p2_grpid']
         hand_id += 1
 
-#   inserting the rows into the table
+    #   inserting the rows into the table
     for item in hands_dict:
         went_first = False
         if item.get('player_num') == 1:
@@ -302,9 +332,6 @@ def insert_turn1_hands(conn, df, match_id):
 # returns a match_id for the match
 # executes the insert_deck function
 def insert_match (conn, df):
-    # df['payload'] = df['payload'].apply(ast.literal_eval)
-
-    # intake = conn, df
 
     match_id = conn.execute("SELECT COALESCE(MAX(match_id), 0) FROM matches").fetchone()[0] + 1
     player_id = df.iloc[0]['player_id']
@@ -319,11 +346,15 @@ def insert_match (conn, df):
     duration = df.iloc[-1]['timestamp_f'] - df.iloc[0]['timestamp_f']
     duration_seconds = int(duration.total_seconds())
 
-    attributes = json.loads(df['payload'].iloc[0]['request']).get('Summary').get('Attributes')
-    game_format = next(
-        (attr['value'] for attr in attributes if attr['name'] == 'Format'),
-        None
-    )
+    # Certain events will exclude the deck_list payload (ie Jump-In)
+    try:
+        attributes = json.loads(df['payload'].iloc[0]['request']).get('Summary').get('Attributes')
+        game_format = next(
+            (attr['value'] for attr in attributes if attr['name'] == 'Format'),
+            None
+        )
+    except:
+        game_format = 'Event'
 
     player_seat = 0
     players = df['payload'].iloc[-1].get('gameRoomConfig').get('reservedPlayers')

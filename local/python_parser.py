@@ -76,13 +76,13 @@ def parse_logs(input_path_file, output_path_file):
             # in cases of low latency/server load state will switch immediately from 'ConnectedToMatchDoor_ConnectingToGRE' to 'Playing'
             if match_start_pattern.match(line):
                 recording = True
-                print('recording on')
+                # print('recording on')
                 game_num += 1
                 continue
 
             if line.startswith('[UnityCrossThreadLogger]STATE CHANGED {"old":"Playing","new":"MatchCompleted"}'):
                 recording = False
-                print('recording off')
+                # print('recording off')
                 continue
 
             if not recording:
@@ -165,7 +165,7 @@ def parse_logs(input_path_file, output_path_file):
             except json.JSONDecodeError:
                 # payload_str = payload
                 payload_str = json.dumps(payload)
-            payload_str = json.dumps(payload)
+            # payload_str = json.dumps(payload)
             out_file.writerow([game_num, metadata_split[1], metadata_split[0], metadata_split[2], payload_str, type(payload_str)])
             rows_written += 1
     # removing files that have no games, both .log and .csv are deleted
