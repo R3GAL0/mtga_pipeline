@@ -26,6 +26,9 @@ def main():
 
     input_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv"
     file_list = os.listdir(path=input_path)
+
+    if 'placeholder.md' in file_list:
+        file_list.remove('placeholder.md')
     
     # read 1 csv at a time, split into one game each, feed to the functions
     for file in file_list:
@@ -115,7 +118,9 @@ def insert_player (conn, df):
 
     player_id = df.iloc[0]['player_id']
 
-    # print(type(df.iloc[-1]['payload']))
+    # print(type(df.iloc[-1]['payload'].get('gameRoomConfig')))
+    # if type(df.iloc[-1]['payload'].get('gameRoomConfig')) is None:
+    # print(df.iloc[-1]['payload'])
     players = df.iloc[-1]['payload'].get('gameRoomConfig').get('reservedPlayers')
     display_name = ''
     for item in players:

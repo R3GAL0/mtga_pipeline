@@ -42,7 +42,7 @@ def parse_logs(input_path_file, output_path_file):
 
     with open(input_path_file, 'r') as log_data, open(output_path_file, 'w') as csvfile:
         out_file = csv.writer(csvfile)
-        out_file.writerow(["game_num", "player_id", "timestamp", "event", "payload", "payload_type"])
+        out_file.writerow(["game_num", "player_id", "timestamp", "event", "payload"])
 
 #       unwanted metadata/response types
         unwanted = ['ClientToGreuimessage', 'ClientToGremessage', '==>', 'Client.TcpConnection.Close']
@@ -166,7 +166,7 @@ def parse_logs(input_path_file, output_path_file):
                 # payload_str = payload
                 payload_str = json.dumps(payload)
             # payload_str = json.dumps(payload)
-            out_file.writerow([game_num, metadata_split[1], metadata_split[0], metadata_split[2], payload_str, type(payload_str)])
+            out_file.writerow([game_num, metadata_split[1], metadata_split[0], metadata_split[2], payload_str])
             rows_written += 1
     # removing files that have no games, both .log and .csv are deleted
     if rows_written == 0:
