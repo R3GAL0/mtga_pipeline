@@ -7,10 +7,6 @@ The ETL Pipeline Diagram is visualized [here](mtga_pipeline_flow.drawio.png).
 The silver-layer schema is visualized in [ERD](erd_silver.png). (note: outdated, column names and types are not accurate)
 
 
-<!-- ## Github Codespaces Setup -->
-
-
-
 ## Process walkthrough
 
 Following the [Pipeline Diagram](mtga_pipeline_flow.drawio.png). 
@@ -78,7 +74,7 @@ match_start_pattern = re.compile(
 
 - **Extract Zones:** Parse zone information from each player's hand and discard
 - **Map instanceId -> grpId:** Resolve card instances to unique card identifiers
-- **Card dimension table:** Match unique card identifiers to card data, for lookup
+- **Card Dimension Table:** Match unique card identifiers to card data, for lookup
 - **Handle Partial Logs:** Ensure incomplete sessions are logged without breaking the pipeline
 
 
