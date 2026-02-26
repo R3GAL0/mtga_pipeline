@@ -5,6 +5,7 @@
 *.parquet
 *.duckdb
 *.duckdb.wal
+*.drawio
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
