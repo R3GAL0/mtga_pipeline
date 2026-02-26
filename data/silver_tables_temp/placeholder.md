@@ -1,1 +1,0 @@
-The temp location for the silver level tables during development
