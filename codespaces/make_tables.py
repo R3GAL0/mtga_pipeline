@@ -1,0 +1,396 @@
+# take the cleaned Player_log.csv s and convert them into relational database tables
+# develop locally then deploy to gcp once functional
+# Use cloud functions ??
+
+import pandas as pd
+import duckdb
+import json
+from collections import Counter
+import os
+
+# read each csv 1 game at a time and partition into the correct tables
+
+
+# For each game
+# save the deck_list in decks
+# save the mulligans
+# save the match details in matches
+#   card draws -> draw_order
+
+# add a new player to players if no match was found for player_id
+
+
+def main():
+    
+    conn = duckdb.connect(database='mtga_local.duckdb')
+
+    input_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv"
+    file_list = os.listdir(path=input_path)
+
+    if 'placeholder.md' in file_list:
+        file_list.remove('placeholder.md')
+    
+    # read 1 csv at a time, split into one game each, feed to the functions
+    for file in file_list:
+        # csv_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv/Filtered_Player_20260212_233143_test.csv"
+        print("Processing: " + file)
+        
+        df_temp = pd.read_csv(f"{input_path}/{file}")
+
+        # the truncated payload breaks json.loads -> dropping these rows
+        df_temp = df_temp[df_temp["payload"] != '[Message summarized because one or more GameStateMessages exceeded the 50 GameObject or 50 Annotation limit.]']
+        df_temp['payload'] = df_temp['payload'].apply(json.loads)
+        df = df_temp.explode('payload').reset_index(drop=True)
+        # print(str(type(
+        #     df['payload'].iloc[0])) + '\n\n'
+        # )
+        # print(str(type(
+        #     df['payload'].iloc[-1])) + '\n\n'
+        # )
+
+        for game_num, df_part in df.groupby('game_num'):
+            insert_player(conn, df_part)
+            match_id = insert_match(conn, df_part)
+            insert_turn1_hands(conn, df_part, match_id)
+
+
+    conn.close()
+
+
+# returns the deck_id, of the new deck or matching old deck
+def insert_deck (conn, df, match_id):
+
+    player_id = df.iloc[0]['player_id']
+    deck_obj = df.iloc[0]['payload'].get('request') 
+    
+    # There are event mode games where a decklist is not in the payloads (Ie the Jump-In event)
+    # For these cases input a blank deck list
+    try:
+        nested = json.loads(deck_obj)
+
+        deck_name = nested.get('Summary').get('Name')
+        deck_list = nested.get('Deck').get('MainDeck')
+        deck_sideboard = nested.get('Deck').get('Sideboard')
+        deck_commander = nested.get('Deck').get('CommandZone')
+
+        # convert to string for insertion
+        deck_list_json = json.dumps(deck_list) if deck_list else None
+        deck_sideboard_json = json.dumps(deck_sideboard) if deck_sideboard else None
+        deck_commander_json = json.dumps(deck_commander) if deck_commander else None
+
+
+    except:
+        deck_name = 'Blank'
+        deck_list = ''
+        deck_sideboard = ''
+        deck_commander = ''
+        deck_list_json = ''
+        deck_sideboard_json = ''
+        deck_commander_json = ''
+
+
+
+    #   checking if the deck already exists, returning the deck_id if it does
+    old_deck = conn.execute("""
+        SELECT deck_id from decks 
+        WHERE deck_name = ?
+        and deck_list = ?
+        and deck_sideboard = ?
+        and deck_commander = ?
+        """,
+        (deck_name, deck_list_json, deck_sideboard_json, deck_commander_json)
+        ).fetchone()
+    if old_deck is not None:
+        return old_deck[0]
+
+    #   else getting the most recent deck_id and inserting the new deck
+    row = conn.execute("SELECT COALESCE(MAX(deck_id), 0) FROM decks").fetchone()
+    next_deck_id = row[0] + 1
+
+    conn.execute(
+        "INSERT INTO decks (deck_id, player_id, match_id, deck_name, deck_list, deck_sideboard, deck_commander) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (next_deck_id, player_id, match_id, deck_name, deck_list, deck_sideboard, deck_commander)
+        )
+    return next_deck_id
+
+# attempts to insert player, will skip if player_id is non_unique
+def insert_player (conn, df):
+
+    player_id = df.iloc[0]['player_id']
+
+    # print(type(df.iloc[-1]['payload'].get('gameRoomConfig')))
+    # if type(df.iloc[-1]['payload'].get('gameRoomConfig')) is None:
+    # print(df.iloc[-1]['payload'])
+    players = df.iloc[-1]['payload'].get('gameRoomConfig').get('reservedPlayers')
+    display_name = ''
+    for item in players:
+        if item.get('userId') == player_id:
+            display_name = item.get('playerName')
+
+    conn.execute(
+        """
+        INSERT INTO players (player_id, display_name)
+        SELECT ?, ?
+        WHERE NOT EXISTS (
+            SELECT 1 FROM players WHERE player_id = ?
+        )
+        """,
+        (str(player_id), str(display_name), str(player_id))
+    )
+
+
+# it will insert all the hands for the game with unique hand_ids
+def insert_turn1_hands(conn, df, match_id):
+
+    # get the next hand_id
+    hand_id = conn.execute("SELECT COALESCE(MAX(hand_id), 0) FROM turn1_hands").fetchone()[0] + 1
+
+    # used to pull out the player hand objects from the nested payload
+    def has_hand_zone(payload_line):
+        if payload_line.get('type') != 'GREMessageType_GameStateMessage':
+            return False
+
+        gsm = payload_line.get('gameStateMessage')
+        if not gsm:
+            return False
+
+        return any(
+            z.get('type') == 'ZoneType_Hand'
+            for z in gsm.get('zones', [])
+        )
+
+    # detects the final hand/begining of the actual play phase
+    def is_beginning_phase(payload_line):
+        # print(type(payload_line))
+        if str(type(payload_line)) != "<class 'dict'>":
+            return False
+        if payload_line.get('type') != 'GREMessageType_GameStateMessage':
+            return False
+        
+        gsm = payload_line.get('gameStateMessage')
+        if not gsm:
+            return False
+        
+        turn = gsm.get('turnInfo')
+        if not turn:
+            return False
+        
+        return turn.get('phase') == 'Phase_Beginning'
+
+    # Getting all the payloads for the hand selection phase
+    # end_idx = df[df['payload'].apply(is_beginning_phase).values]
+    # final_hand = end_idx.index[0] + 1
+    # df_next = df.iloc[:final_hand]
+
+    # df_hands = df_next[df_next['payload'].apply(has_hand_zone).values][1:]
+
+    # chat version
+    beginning_idx = df[df['payload'].apply(is_beginning_phase)].index.min()
+    df_until_beginning = df.loc[:beginning_idx]
+    df_hands = df_until_beginning[df_until_beginning['payload'].apply(has_hand_zone)].iloc[1:]
+
+
+    #   grabbing some useful values, will be used when writing to the table
+    player_id = df_hands.iloc[0]['player_id']
+    seatID = df_hands['payload'].iloc[0].get('systemSeatIds')[0]
+
+
+    #   Making a mapping variable to map instanceId of a card to its grpId (arena_id)
+    gameObjectMap = {}
+    for item in df_hands['payload']:
+        game_state = item.get('gameStateMessage')
+        if not game_state:
+            continue
+
+        game_objects = game_state.get('gameObjects')
+        if not game_objects:
+            continue
+
+        for sub_item in game_objects:
+            gameObjectMap[sub_item.get('instanceId')] = sub_item.get('grpId')
+
+
+    #   Puting the contents of the hands into separate columns for easy indexing
+
+    # zoneId = 31 -> player 1 hand
+    # zoneId = 35 -> player 2 hand
+    # zoneId = 30 -> mulligan retured cards
+
+    def get_zones (payload_line, player):
+        all_zones = payload_line.get('gameStateMessage').get('zones')
+
+        for item in all_zones:
+            if player == 'p1' and item.get('zoneId') == 31:
+                return item.get('objectInstanceIds')
+            if player == 'p2' and item.get('zoneId') == 35:
+                return item.get('objectInstanceIds')
+            if player == 'limbo' and item.get('zoneId') == 30:
+                return item.get('objectInstanceIds', '')
+
+    df_hands['hand_p1'] = df_hands['payload'].apply(get_zones, args=('p1',))
+    df_hands['hand_p2'] = df_hands['payload'].apply(get_zones, args=('p2',))
+    df_hands['hand_limbo'] = df_hands['payload'].apply(get_zones, args=('limbo',))
+
+    #   Mapping the grpid (unique card identifier) to the objectInstanceIds (in game object identifier)
+    #   grpid is eqivalent to arena_id from dim_cards table
+    def map_grpid(hand, grpid_map): 
+        if hand is None: 
+            return None 
+        temp = [grpid_map.get(i) for i in hand if i in grpid_map]
+        if len(temp) == 0:
+            return None
+        return temp
+
+
+    df_hands['hand_p1_grpid'] = df_hands['hand_p1'].apply(map_grpid, args=(gameObjectMap,))
+    df_hands['hand_p2_grpid'] = df_hands['hand_p2'].apply(map_grpid, args=(gameObjectMap,))
+    df_hands['hand_limbo_grpid'] = df_hands['hand_limbo'].apply(map_grpid, args=(gameObjectMap,))
+
+
+    # get the relevant player details (for mulliganCount), and put in a column
+    def player_details(row):
+        players = row['payload'].get('gameStateMessage', {}).get('players', [])
+
+        if row['hand_p1_grpid'] is not None:
+            return next(
+                (item for item in players if item.get('systemSeatNumber') == 1),
+                None
+            )
+        if row['hand_p2_grpid'] is not None:
+            return next(
+                (item for item in players if item.get('systemSeatNumber') == 2),
+                None
+            )
+        return None
+
+    df_hands['player'] = df_hands.apply(player_details, axis=1)
+
+    #   Formatting the hands_dict for easier writting to table/disk
+    hands_dict = []
+    last_hand = []
+    for index, row in df_hands.iterrows():
+        # print(str(row) + '\n\n')
+        if 'mulliganCount' not in locals():
+            mulliganCount = 0
+        try:
+            mulliganCount = row['player'].get('mulliganCount', 0)
+        except:
+            pass
+        
+        if 'player_num' not in locals():
+            player_num = 0
+        try:
+            player_num = row['player'].get('systemSeatNumber')
+        except:
+            pass
+
+        if row['hand_p1_grpid'] is not None:
+            # removing the last hand if it is the same and stepping back hand_id (only happens with mulligans)
+            if not (Counter(row['hand_p1_grpid']) - Counter(last_hand)):
+                hands_dict.pop()
+                hand_id -= 1
+
+
+            hands_dict.append({
+                'hand_id':hand_id,
+                'init_hand': row['hand_p1_grpid'],
+                'mulliganCount': mulliganCount,
+                'limbo_hand': row['hand_limbo_grpid'],
+                'player_num': player_num
+            })
+            last_hand = row['hand_p1_grpid']
+
+        if row['hand_p2_grpid'] is not None:
+            # removing the last hand if it is the same and stepping back hand_id (only happens with mulligans)
+            if not (Counter(row['hand_p2_grpid']) - Counter(last_hand)):
+                hands_dict.pop()
+                hand_id -= 1
+
+            hands_dict.append({
+                'hand_id':hand_id,
+                'init_hand': row['hand_p2_grpid'],
+                'mulliganCount': mulliganCount,
+                'limbo_hand': row['hand_limbo_grpid'],
+                'player_num': player_num
+            })
+            last_hand = row['hand_p2_grpid']
+        hand_id += 1
+
+    #   inserting the rows into the table
+    for item in hands_dict:
+        went_first = False
+        if item.get('player_num') == 1:
+            went_first = True
+
+        conn.execute(
+            """
+            INSERT INTO turn1_hands (hand_id, player_id, match_id, initial_hand, mulliganCount, final_hand, went_first)
+            SELECT ?, ?, ?, ?, ?, ?, ?
+            """,
+            (int(item.get('hand_id')), str(player_id), int(match_id), str(item.get('init_hand')), 
+            int(item.get('mulliganCount')), str(item.get('limbo_hand')), str(went_first)
+        ))
+    # return hands_dict.get('hand_id').iloc[-1] +1
+
+
+# inserts a match into the db
+# returns a match_id for the match
+# executes the insert_deck function
+def insert_match (conn, df):
+
+    match_id = conn.execute("SELECT COALESCE(MAX(match_id), 0) FROM matches").fetchone()[0] + 1
+    player_id = df.iloc[0]['player_id']
+    deck_id = insert_deck(conn, df, match_id)
+
+    df['timestamp_f'] =  pd.to_datetime(
+        df['timestamp'],
+        format='%m/%d/%Y %I:%M:%S %p'
+        )
+    start_time = df.iloc[0]['timestamp_f']
+
+    duration = df.iloc[-1]['timestamp_f'] - df.iloc[0]['timestamp_f']
+    duration_seconds = int(duration.total_seconds())
+
+    # Certain events will exclude the deck_list payload (ie Jump-In)
+    try:
+        attributes = json.loads(df['payload'].iloc[0]['request']).get('Summary').get('Attributes')
+        game_format = next(
+            (attr['value'] for attr in attributes if attr['name'] == 'Format'),
+            None
+        )
+    except:
+        game_format = 'Event'
+
+    player_seat = 0
+    players = df['payload'].iloc[-1].get('gameRoomConfig').get('reservedPlayers')
+    # print(players)
+    for item in players:
+        if item.get('userId') == player_id:
+            player_seat = item.get('systemSeatId')
+
+    # winner_seat
+    # 'MatchScope_Game' -> Is the result of one game in a match (can be 1 or 3 games per match)
+    match_results = df['payload'].iloc[-1].get('finalMatchResult').get('resultList')
+    winner_seat = 0
+    for item in match_results:
+        if item.get('scope') == 'MatchScope_Match':
+            winner_seat = item.get('winningTeamId')
+
+    # draw_order ??
+    #   extra goal
+
+
+    # will change draw_order after implementation
+    draw_order = ''
+    conn.execute(
+        """
+        INSERT INTO matches (match_id, deck_id, player_id, player_seat, start_time, duration, winner_seat, game_format, draw_order)
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+        """,
+        (int(match_id), int(deck_id), str(player_id), int(player_seat), start_time, int(duration_seconds), int(winner_seat), str(game_format), str(draw_order))
+    )
+    return match_id
+
+if __name__ == "__main__":
+    main()
+    
