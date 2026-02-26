@@ -56,6 +56,7 @@ def parse_logs(input_path_file, output_path_file):
         while True:
             # grabbing the buffered line, and handling end of file
             if buffered_line:
+                print(buffered_line)
                 line = buffered_line
                 buffered_line = None
             else:
@@ -80,6 +81,7 @@ def parse_logs(input_path_file, output_path_file):
                 game_num += 1
                 continue
 
+            # if line.startswith('[UnityCrossThreadLogger]STATE CHANGED {"old":"Playing","new":"MatchCompleted"}') and buffered_line:
             if line.startswith('[UnityCrossThreadLogger]STATE CHANGED {"old":"Playing","new":"MatchCompleted"}'):
                 recording = False
                 # print('recording off')
@@ -104,14 +106,8 @@ def parse_logs(input_path_file, output_path_file):
                 payload = line[index:]
             else:
                 metadata = line
-                try:
-                    next_line = next(log_iter).strip()
-                    # Stop if the next line is a state change
-                    if next_line.startswith('[UnityCrossThreadLogger]STATE CHANGED'):
-                        continue
-                    payload = next_line
-                except StopIteration:
-                    payload = ''
+                next_line = next(log_iter).strip()
+                payload = next_line
 
 
             # splitting metadata into timestamp, player_id and event columns
@@ -128,21 +124,23 @@ def parse_logs(input_path_file, output_path_file):
                 deck_list = ''
 
 
-            # The payload is a nested json, need to track open and close paren    
-            depth = payload.count('{') - payload.count('}')
-            while depth > 0:
-                try:
-                    next_line = next(log_iter).strip()
-                except StopIteration:
-                    break
+            # This block was removed. All payloads of interest are inline with [UnityCrossThreadLogger], or are on the following line
+            # # The payload is a nested json, need to track open and close paren    
+            # depth = payload.count('{') - payload.count('}')
+            # while depth > 0:
+            #     print('Depth in use')
+            #     try:
+            #         next_line = next(log_iter).strip()
+            #     except StopIteration:
+            #         break
 
-                # Stop if the next line is another response
-                if next_line.startswith('[UnityCrossThreadLogger]'):
-                    buffered_line = next_line
-                    break
+            #     # Stop if the next line is another response
+            #     if next_line.startswith('[UnityCrossThreadLogger]'):
+            #         buffered_line = next_line
+            #         break
 
-                payload += next_line
-                depth += next_line.count('{') - next_line.count('}')
+            #     payload += next_line
+            #     depth += next_line.count('{') - next_line.count('}')
 
 
             # check payload for valid requestid, if missing then drop row 
@@ -150,8 +148,10 @@ def parse_logs(input_path_file, output_path_file):
             try:
                 payload_json = json.loads(payload)
 
-                if payload_json.get('requestId') is None:
-                    continue
+                # block was causing valuable rows to be skipped. Including these rows doesn't break downstream process
+                # if payload_json.get('requestId') is None:
+                #     print("skip due to requestId")
+                #     continue
 
                 if metadata_split[2] == 'GreToClientEvent':
                     payload_str = json.dumps(payload_json['greToClientEvent']['greToClientMessages'])
@@ -165,7 +165,7 @@ def parse_logs(input_path_file, output_path_file):
             except json.JSONDecodeError:
                 # payload_str = payload
                 payload_str = json.dumps(payload)
-            # payload_str = json.dumps(payload)
+
             out_file.writerow([game_num, metadata_split[1], metadata_split[0], metadata_split[2], payload_str])
             rows_written += 1
     # removing files that have no games, both .log and .csv are deleted

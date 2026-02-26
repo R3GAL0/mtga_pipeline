@@ -41,7 +41,7 @@ CREATE TABLE matches (
     player_id VARCHAR,
     player_seat INTEGER,            -- 1 or 2
     start_time TIMESTAMP NOT NULL,
-    duration INTEGER,               -- SECONDS
+    duration_sec INTEGER,               -- SECONDS
     winner_seat VARCHAR,            -- 1 or 2
     game_format VARCHAR,
     draw_order VARCHAR              -- to be implemented
