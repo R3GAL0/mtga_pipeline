@@ -20,12 +20,15 @@ import os
 # add a new player to players if no match was found for player_id
 
 
-def main():
+def insert_all(data_dir, db_dir):
     
-    conn = duckdb.connect(database='mtga_local.duckdb')
+    conn = duckdb.connect(database=f"{db_dir}/mtga_local.duckdb")
 
-    input_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv"
-    file_list = os.listdir(path=input_path)
+    # For testing docker
+    # input_path = "/app/data"
+    # input_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv"
+
+    file_list = os.listdir(path=data_dir)
 
     if 'placeholder.md' in file_list:
         file_list.remove('placeholder.md')
@@ -35,18 +38,12 @@ def main():
         # csv_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv/Filtered_Player_20260212_233143_test.csv"
         print("Processing: " + file)
         
-        df_temp = pd.read_csv(f"{input_path}/{file}")
+        df_temp = pd.read_csv(f"{data_dir}/{file}")
 
         # the truncated payload breaks json.loads -> dropping these rows
         df_temp = df_temp[df_temp["payload"] != '[Message summarized because one or more GameStateMessages exceeded the 50 GameObject or 50 Annotation limit.]']
         df_temp['payload'] = df_temp['payload'].apply(json.loads)
         df = df_temp.explode('payload').reset_index(drop=True)
-        # print(str(type(
-        #     df['payload'].iloc[0])) + '\n\n'
-        # )
-        # print(str(type(
-        #     df['payload'].iloc[-1])) + '\n\n'
-        # )
 
         for game_num, df_part in df.groupby('game_num'):
             insert_player(conn, df_part)
@@ -118,9 +115,6 @@ def insert_player (conn, df):
 
     player_id = df.iloc[0]['player_id']
 
-    # print(type(df.iloc[-1]['payload'].get('gameRoomConfig')))
-    # if type(df.iloc[-1]['payload'].get('gameRoomConfig')) is None:
-    # print(df.iloc[-1]['payload'])
     players = df.iloc[-1]['payload'].get('gameRoomConfig').get('reservedPlayers')
     display_name = ''
     for item in players:
@@ -161,7 +155,6 @@ def insert_turn1_hands(conn, df, match_id):
 
     # detects the final hand/begining of the actual play phase
     def is_beginning_phase(payload_line):
-        # print(type(payload_line))
         if str(type(payload_line)) != "<class 'dict'>":
             return False
         if payload_line.get('type') != 'GREMessageType_GameStateMessage':
@@ -268,21 +261,14 @@ def insert_turn1_hands(conn, df, match_id):
     #   Formatting the hands_dict for easier writting to table/disk
     hands_dict = []
     last_hand = []
+    mulliganCount = 0
+    player_num = None
     for index, row in df_hands.iterrows():
-        # print(str(row) + '\n\n')
-        if 'mulliganCount' not in locals():
-            mulliganCount = 0
-        try:
-            mulliganCount = row['player'].get('mulliganCount', 0)
-        except:
-            pass
-        
-        if 'player_num' not in locals():
-            player_num = 0
-        try:
-            player_num = row['player'].get('systemSeatNumber')
-        except:
-            pass
+
+        mulliganCount = row.get('player', {}).get('mulliganCount', 0)
+        player = row.get('player', {})
+        if player_num is None:
+            player_num = player.get('systemSeatNumber', 0)
 
         if row['hand_p1_grpid'] is not None:
             # removing the last hand if it is the same and stepping back hand_id (only happens with mulligans)
@@ -384,7 +370,7 @@ def insert_match (conn, df):
     draw_order = ''
     conn.execute(
         """
-        INSERT INTO matches (match_id, deck_id, player_id, player_seat, start_time, duration, winner_seat, game_format, draw_order)
+        INSERT INTO matches (match_id, deck_id, player_id, player_seat, start_time, duration_sec, winner_seat, game_format, draw_order)
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
         """,
         (int(match_id), int(deck_id), str(player_id), int(player_seat), start_time, int(duration_seconds), int(winner_seat), str(game_format), str(draw_order))
@@ -392,5 +378,5 @@ def insert_match (conn, df):
     return match_id
 
 if __name__ == "__main__":
-    main()
+    insert_all()
     
