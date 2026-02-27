@@ -1,0 +1,8 @@
+mtga_venv
+__pycache__
+*.pyc
+*.pyo
+.git
+*.csv
+*.sql
+*.ipynb
