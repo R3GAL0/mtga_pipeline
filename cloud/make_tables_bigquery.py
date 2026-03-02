@@ -3,10 +3,10 @@
 # Use cloud functions ??
 
 import pandas as pd
-import duckdb
 import json
 from collections import Counter
 import os
+from google.cloud import bigquery
 
 # read each csv 1 game at a time and partition into the correct tables
 
@@ -20,22 +20,11 @@ import os
 # add a new player to players if no match was found for player_id
 
 
-def insert_all(data_dir, db_dir):
-    
-    conn = duckdb.connect(database=f"{db_dir}")
-
-    # For testing docker
-    # input_path = "/app/data"
-    # input_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv"
+# def insert_all(data_dir, db_dir):
+def insert_all(data_dir, client):
 
     file_list = os.listdir(path=data_dir)
 
-    if db_dir.split('/')[-1] in file_list:
-        file_list.remove(db_dir.split('/')[-1])
-        
-    if 'placeholder.md' in file_list:
-        file_list.remove('placeholder.md')
-    
     # read 1 csv at a time, split into one game each, feed to the functions
     for file in file_list:
         # csv_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv/Filtered_Player_20260212_233143_test.csv"
@@ -49,16 +38,14 @@ def insert_all(data_dir, db_dir):
         df = df_temp.explode('payload').reset_index(drop=True)
 
         for game_num, df_part in df.groupby('game_num'):
-            insert_player(conn, df_part)
-            match_id = insert_match(conn, df_part)
-            insert_turn1_hands(conn, df_part, match_id)
+            insert_player(client, df_part)
+            match_id = insert_match(client, df_part)
+            insert_turn1_hands(client, df_part, match_id)
 
-
-    conn.close()
 
 
 # returns the deck_id, of the new deck or matching old deck
-def insert_deck (conn, df, match_id):
+def insert_deck (client, df, match_id):
 
     player_id = df.iloc[0]['player_id']
     deck_obj = df.iloc[0]['payload'].get('request') 
@@ -111,6 +98,11 @@ def insert_deck (conn, df, match_id):
         "INSERT INTO decks (deck_id, player_id, match_id, deck_name, deck_list, deck_sideboard, deck_commander) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (next_deck_id, player_id, match_id, deck_name, deck_list, deck_sideboard, deck_commander)
         )
+
+    client.insert_rows(
+
+    )
+
     return next_deck_id
 
 # attempts to insert player, will skip if player_id is non_unique
