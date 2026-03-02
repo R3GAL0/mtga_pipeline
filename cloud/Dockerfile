@@ -25,11 +25,16 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 
 # Copy code in the directory
-COPY . .
+# COPY . .
+COPY ./main.py .
+COPY ./make_tables.py .
+COPY ./show_tables.py .
+COPY ./requirements.txt .
 
 # Set environment variable for /tmp data
 ENV TMP_BASE=/tmp/data
 RUN mkdir -p $TMP_BASE
 
 # Entry point for the job
-CMD python main.py
+# CMD python main.py
+CMD ["python", "main.py"]
