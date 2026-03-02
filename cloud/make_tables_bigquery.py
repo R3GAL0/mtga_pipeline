@@ -30,6 +30,9 @@ def insert_all(data_dir, db_dir):
 
     file_list = os.listdir(path=data_dir)
 
+    if db_dir.split('/')[-1] in file_list:
+        file_list.remove(db_dir.split('/')[-1])
+        
     if 'placeholder.md' in file_list:
         file_list.remove('placeholder.md')
     
@@ -265,7 +268,9 @@ def insert_turn1_hands(conn, df, match_id):
     player_num = None
     for index, row in df_hands.iterrows():
 
-        mulliganCount = row.get('player', {}).get('mulliganCount', 0)
+        if row.get('player', {}) is not None:
+            mulliganCount = row.get('player', {}).get('mulliganCount', 0)
+
         player = row.get('player', {})
         if player_num is None:
             player_num = player.get('systemSeatNumber', 0)
