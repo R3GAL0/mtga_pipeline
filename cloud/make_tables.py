@@ -22,7 +22,7 @@ import os
 
 def insert_all(data_dir, db_dir):
     
-    conn = duckdb.connect(database=f"{db_dir}/mtga_local.duckdb")
+    conn = duckdb.connect(database=f"{db_dir}")
 
     # For testing docker
     # input_path = "/app/data"

@@ -32,4 +32,4 @@ ENV TMP_BASE=/tmp/data
 RUN mkdir -p $TMP_BASE
 
 # Entry point for the job
-CMD ["python", "main.py"]
+CMD python main.py
