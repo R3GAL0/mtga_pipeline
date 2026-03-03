@@ -383,5 +383,5 @@ def insert_match (conn, df):
     return match_id
 
 if __name__ == "__main__":
-    insert_all()
+    insert_all("/home/r3gal/develop/mtga_pipeline/data/parsed_csv", "/home/r3gal/develop/mtga_pipeline/cloud/mtga_local.duckdb")
     
