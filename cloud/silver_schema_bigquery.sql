@@ -79,7 +79,7 @@ CREATE TABLE `mtgapipeline.mtga_silver.turn1_hands` (
   match_id INT64 NOT NULL,          -- FK, references matches
   initial_hand ARRAY<INT64>,        -- The hand drawn, using oracle_id, prior to selecting cards to keep if mulliganCount > 0
   mulliganCount INT64,              -- The mulligan count for the hand (0-7)
-  final_hand ARRAY<INT64>,          -- The hand after selecting cards to mulligan, using oracle_id
+  discarded ARRAY<INT64>,          -- The hand after selecting cards to mulligan, using oracle_id
   went_first BOOL                   -- If the player went first
 )
 CLUSTER BY match_id, player_id;

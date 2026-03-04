@@ -1,6 +1,19 @@
-# take the cleaned Player_log.csv s and convert them into relational database tables
-# develop locally then deploy to gcp once functional
-# Use cloud functions ??
+"""
+MTGA Data Pipeline: Silver Layer Ingestion
+
+take the cleaned Player_log.csv and insert the relevant values into bigquery tables
+
+GENERAL PROCESS:
+    add a new player to players if no match was found for player_id
+
+    For each game:
+
+    insert the deck_list in decks, and a deck_list hash for uniqueness
+    insert the match details in matches
+      card draws -> draw_order
+    insert turn 1 hands with proper mappings from objectInstanceIds to oracle_ids
+      including extra rows for mulligans
+"""
 
 import pandas as pd
 import json
@@ -10,32 +23,20 @@ from google.cloud import bigquery
 import hashlib
 import datetime
 
-# read each csv 1 game at a time and partition into the correct tables
-
-
-# For each game
-# save the deck_list in decks
-# save the mulligans
-# save the match details in matches
-#   card draws -> draw_order
-
-# add a new player to players if no match was found for player_id
-
 
 # def insert_all(data_dir, db_dir):
 def insert_all(data_dir, client):
 
     file_list = os.listdir(path=data_dir)
 
-    # read 1 csv at a time, split into one game each, feed to the functions
     for file in file_list:
-        # csv_path = "/home/r3gal/develop/mtga_pipeline/data/parsed_csv/Filtered_Player_20260212_233143_test.csv"
         print("Processing: " + file)
         
         df_temp = pd.read_csv(f"{data_dir}/{file}")
 
-        # the truncated payload breaks json.loads -> dropping these rows
+        # the truncated payloads break json.loads -> dropping these rows
         df_temp = df_temp[df_temp["payload"] != '[Message summarized because one or more GameStateMessages exceeded the 50 GameObject or 50 Annotation limit.]']
+
         df_temp['payload'] = df_temp['payload'].apply(json.loads)
         df = df_temp.explode('payload').reset_index(drop=True)
 
@@ -44,7 +45,8 @@ def insert_all(data_dir, client):
             match_id = insert_match(client, df_part)
             insert_turn1_hands(client, df_part, match_id)
 
-# increments the pk_counter table, returns the incremented pk value
+# increments the pk_counter table, returns the incremented PK value
+# used to get the next PK for each table (BigQuery doesnt have autoincrement on PKs)
 def increment_id(client, pk_name):
 
     update_query = """
@@ -82,32 +84,6 @@ def insert_deck (client, df, match_id):
 
     player_id = df.iloc[0]['player_id']
     deck_obj = df.iloc[0]['payload'].get('request') 
-    
-    # There are event mode games where a decklist is not in the payloads (Ie the Jump-In event)
-    # For these cases input a blank deck list
-    # try:
-    #     nested = json.loads(deck_obj)
-
-    #     deck_name = nested.get('Summary').get('Name')
-    #     deck_list = nested.get('Deck').get('MainDeck')
-    #     deck_sideboard = nested.get('Deck').get('Sideboard')
-    #     deck_commander = nested.get('Deck').get('CommandZone')
-
-    #     # convert to string for insertion
-    #     deck_list_json = json.dumps(deck_list) if deck_list else None
-    #     deck_sideboard_json = json.dumps(deck_sideboard) if deck_sideboard else None
-    #     deck_commander_json = json.dumps(deck_commander) if deck_commander else None
-
-
-    # except:
-    #     deck_name = 'Blank'
-    #     deck_list = ''
-    #     deck_sideboard = ''
-    #     deck_commander = ''
-    #     deck_list_json = ''
-    #     deck_sideboard_json = ''
-    #     deck_commander_json = ''
-
 
     try:
         nested = json.loads(deck_obj)
@@ -115,16 +91,23 @@ def insert_deck (client, df, match_id):
         deck_name = nested.get('Summary').get('Name')
         deck_list_temp = nested.get('Deck').get('MainDeck')
         deck_sideboard = nested.get('Deck').get('Sideboard')
-        deck_commander = nested.get('Deck').get('CommandZone')
+        deck_commander_temp = nested.get('Deck').get('CommandZone')
+
+        if len(deck_commander_temp) == 0:
+            deck_commander = ''
+        else:
+            deck_commander = deck_commander_temp[0]
 
         # need to flatten deck_list
+
         deck_list = []
         for item in deck_list_temp:
-            for _ in range(item.quantity):
-                deck_list.append(item.cardId)
+            for _ in range(item.get('quantity')):
+                deck_list.append(item.get('cardId'))
         deck_list = sorted(deck_list)
 
-    except:
+    except Exception as error_details:
+        print('insert_deck error: ' + str(error_details))
         deck_name = 'Blank'
         deck_list = []
         deck_sideboard = []
@@ -133,10 +116,6 @@ def insert_deck (client, df, match_id):
     #   checking if the deck already exists, returning the deck_id if it does
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
-            # bigquery.ScalarQueryParameter("deck_name", "STRING", deck_name),
-            # bigquery.ArrayQueryParameter("deck_list", "INT64", deck_list),
-            # bigquery.ArrayQueryParameter("deck_sideboard", "INT64", deck_sideboard),
-            # bigquery.ScalarQueryParameter("deck_commander", "STRING", deck_commander),
             bigquery.ScalarQueryParameter("deck_hash", "STRING", hash_list(deck_list)),
             bigquery.ScalarQueryParameter("side_hash", "STRING", hash_list(deck_sideboard)),
             ]
@@ -153,40 +132,8 @@ def insert_deck (client, df, match_id):
     if query_job_deck is not None:
         return query_job_deck.deck_id
 
-
-
-    #   checking if the deck already exists, returning the deck_id if it does
-    # old_deck = conn.execute("""
-    #     SELECT deck_id from decks 
-    #     WHERE deck_name = ?
-    #     and deck_list = ?
-    #     and deck_sideboard = ?
-    #     and deck_commander = ?
-    #     """,
-    #     (deck_name, deck_list_json, deck_sideboard_json, deck_commander_json)
-    #     ).fetchone()
-    # if old_deck is not None:
-    #     return old_deck[0]
-
-
-
-    #   else getting the most recent deck_id and inserting the new deck
-    # row = conn.execute("SELECT COALESCE(MAX(deck_id), 0) FROM decks").fetchone()
-    # next_deck_id = row[0] + 1
-    # query_id = """
-    # SELECT COALESCE(MAX(deck_id), 0) as max_id
-    # from `mtgapipeline.mtga_silver.pk_counter`
-    # """
-    # next_deck_id = next(client.query(query_id).result()).max_id + 1
-    # print('next deck_id: ' + str(next_deck_id))
-
     deck_id = increment_id(client, 'deck_id')
 
-
-    # conn.execute(
-    #     "INSERT INTO decks (deck_id, player_id, match_id, deck_name, deck_list, deck_sideboard, deck_commander) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    #     (next_deck_id, player_id, match_id, deck_name, deck_list, deck_sideboard, deck_commander)
-    #     )
     row_to_insert = [
         {
             "deck_id": deck_id,
@@ -201,8 +148,9 @@ def insert_deck (client, df, match_id):
             "side_hash": hash_list(deck_sideboard)
         }
     ]
-    client.insert_rows_json("mtgapipeline.mtga_silver.decks", row_to_insert)
-
+    errors = client.insert_rows_json("mtgapipeline.mtga_silver.decks", row_to_insert)
+    if errors:
+        print("Deck insert errors: " + str(errors))
 
     return deck_id
 
@@ -217,35 +165,35 @@ def insert_player (client, df):
         if item.get('userId') == player_id:
             display_name = item.get('playerName')
 
-    # conn.execute(
-    #     """
-    #     INSERT INTO players (player_id, display_name)
-    #     SELECT ?, ?
-    #     WHERE NOT EXISTS (
-    #         SELECT 1 FROM players WHERE player_id = ?
-    #     )
-    #     """,
-    #     (str(player_id), str(display_name), str(player_id))
-    # )
+
+    query_player = """
+        SELECT player_id from `mtgapipeline.mtga_silver.players`
+        WHERE player_id = @player_id
+        """
+
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("player_id", "STRING", player_id)
+            ]
+    )
+
+    query_job_player = next(client.query(query_player, job_config=job_config).result(), None)
+    if query_job_player is not None:
+        return
+        
     row_to_insert = [
         {
             "player_id": player_id,
             "display_name": display_name
         }
     ]
-    client.insert_rows_json("mtgapipeline.mtga_silver.players", row_to_insert)
+    errors = client.insert_rows_json("mtgapipeline.mtga_silver.players", row_to_insert)
+    if errors:
+        print("Players insert errors: " + str(errors))
 
 
 # it will insert all the hands for the game with unique hand_ids
 def insert_turn1_hands(client, df, match_id):
-
-    # get the next hand_id
-    # hand_id = conn.execute("SELECT COALESCE(MAX(hand_id), 0) FROM turn1_hands").fetchone()[0] + 1
-    # query_id = """
-    # SELECT COALESCE(MAX(hand_id), 0) as max_id
-    # from `mtgapipeline.mtga_silver.pk_counter`
-    # """
-    # hand_id = next(client.query(query_id).result()).max_id + 1
 
     # used to pull out the player hand objects from the nested payload
     def has_hand_zone(payload_line):
@@ -278,23 +226,14 @@ def insert_turn1_hands(client, df, match_id):
         
         return turn.get('phase') == 'Phase_Beginning'
 
-    # Getting all the payloads for the hand selection phase
-    # end_idx = df[df['payload'].apply(is_beginning_phase).values]
-    # final_hand = end_idx.index[0] + 1
-    # df_next = df.iloc[:final_hand]
-
-    # df_hands = df_next[df_next['payload'].apply(has_hand_zone).values][1:]
-
-    # chat version
+    # slicing the df to get the initial hand payloads
     beginning_idx = df[df['payload'].apply(is_beginning_phase)].index.min()
     df_until_beginning = df.loc[:beginning_idx]
     df_hands = df_until_beginning[df_until_beginning['payload'].apply(has_hand_zone)].iloc[1:]
 
-
     #   grabbing some useful values, will be used when writing to the table
     player_id = df_hands.iloc[0]['player_id']
     seatID = df_hands['payload'].iloc[0].get('systemSeatIds')[0]
-
 
     #   Making a mapping variable to map instanceId of a card to its grpId (arena_id)
     gameObjectMap = {}
@@ -312,7 +251,6 @@ def insert_turn1_hands(client, df, match_id):
 
 
     #   Puting the contents of the hands into separate columns for easy indexing
-
     # zoneId = 31 -> player 1 hand
     # zoneId = 35 -> player 2 hand
     # zoneId = 30 -> mulligan retured cards
@@ -333,7 +271,7 @@ def insert_turn1_hands(client, df, match_id):
     df_hands['hand_limbo'] = df_hands['payload'].apply(get_zones, args=('limbo',))
 
     #   Mapping the grpid (unique card identifier) to the objectInstanceIds (in game object identifier)
-    #   grpid is eqivalent to arena_id from dim_cards table
+    #   grpid is eqivalent to arena_id/oracle_id from dim_cards table
     def map_grpid(hand, grpid_map): 
         if hand is None: 
             return None 
@@ -366,7 +304,7 @@ def insert_turn1_hands(client, df, match_id):
 
     df_hands['player'] = df_hands.apply(player_details, axis=1)
 
-    #   Formatting the hands_dict for easier writting to table/disk
+    #   Formatting the hands_dict for writting to disk
     hands_dict = []
     last_hand = []
     mulliganCount = 0
@@ -381,55 +319,40 @@ def insert_turn1_hands(client, df, match_id):
             player_num = player.get('systemSeatNumber', 0)
 
         if row['hand_p1_grpid'] is not None:
+            # getting a new hand_id for insertion
             hand_id = increment_id(client, 'hand_id')
-            # removing the last hand if it is the same and stepping back hand_id (only happens with mulligans)
-            # if not (Counter(row['hand_p1_grpid']) - Counter(last_hand)):
-            #     hands_dict.pop()
-            #     hand_id -= 1
-
 
             hands_dict.append({
                 'hand_id':hand_id,
-                'init_hand': row['hand_p1_grpid'],
+                'player_id': player_id,
+                'match_id': match_id,
+                'initial_hand': row['hand_p1_grpid'],
                 'mulliganCount': mulliganCount,
-                'limbo_hand': row['hand_limbo_grpid'],
-                'player_num': player_num,
+                'discarded': row['hand_limbo_grpid'] if row['hand_limbo_grpid'] is not None else [],
                 'went_first': True
             })
             last_hand = row['hand_p1_grpid']
 
         if row['hand_p2_grpid'] is not None:
+            # getting a new hand_id for insertion
             hand_id = increment_id(client, 'hand_id')
-
-            # removing the last hand if it is the same and stepping back hand_id (only happens with mulligans)
-            # if not (Counter(row['hand_p2_grpid']) - Counter(last_hand)):
-            #     hands_dict.pop()
-            #     hand_id -= 1
 
             hands_dict.append({
                 'hand_id':hand_id,
-                'init_hand': row['hand_p2_grpid'],
+                'player_id': player_id,
+                'match_id': match_id,
+                'initial_hand': row['hand_p2_grpid'],
                 'mulliganCount': mulliganCount,
-                'limbo_hand': row['hand_limbo_grpid'],
-                'player_num': player_num,
+                'discarded': row['hand_limbo_grpid'] if row['hand_limbo_grpid'] is not None else [],
                 'went_first': False
             })
-            last_hand = row['hand_p2_grpid']
-        # hand_id += 1
+            last_hand = row['hand_p2_grpid']\
 
     #   inserting the rows into the table
 
-    client.insert_rows_json("mtgapipeline.mtga_silver.turn1_hands", hands_dict)
-    # for item in hands_dict:
-    #     conn.execute(
-    #         """
-    #         INSERT INTO turn1_hands (hand_id, player_id, match_id, initial_hand, mulliganCount, final_hand, went_first)
-    #         SELECT ?, ?, ?, ?, ?, ?, ?
-    #         """,
-    #         (int(item.get('hand_id')), str(player_id), int(match_id), str(item.get('init_hand')), 
-    #         int(item.get('mulliganCount')), str(item.get('limbo_hand')), str(went_first)
-    #     ))
-    # return hands_dict.get('hand_id').iloc[-1] +1
+    errors = client.insert_rows_json("mtgapipeline.mtga_silver.turn1_hands", hands_dict)
+    if errors:
+        print("T1 hands insert errors: " + str(errors))
 
 
 # inserts a match into the db
@@ -437,12 +360,6 @@ def insert_turn1_hands(client, df, match_id):
 # executes the insert_deck function
 def insert_match (client, df):
 
-    # match_id = conn.execute("SELECT COALESCE(MAX(match_id), 0) FROM matches").fetchone()[0] + 1
-    # query_id = """
-    # SELECT COALESCE(MAX(match_id), 0) as max_id
-    # from `mtgapipeline.mtga_silver.pk_counter`
-    # """
-    # match_id = next(client.query(query_id).result()).max_id + 1
     match_id = increment_id(client, 'match_id')
 
     player_id = df.iloc[0]['player_id']
@@ -469,12 +386,11 @@ def insert_match (client, df):
 
     player_seat = 0
     players = df['payload'].iloc[-1].get('gameRoomConfig').get('reservedPlayers')
-    # print(players)
+    
     for item in players:
         if item.get('userId') == player_id:
             player_seat = item.get('systemSeatId')
 
-    # winner_seat
     # 'MatchScope_Game' -> Is the result of one game in a match (can be 1 or 3 games per match)
     match_results = df['payload'].iloc[-1].get('finalMatchResult').get('resultList')
     winner_seat = 0
@@ -484,8 +400,6 @@ def insert_match (client, df):
 
     # will change draw_order after implementation
     draw_order = [
-        {'cards': []},
-        {'cards': []},
         {'cards': []}
     ]
     match_dict = [{
@@ -500,14 +414,10 @@ def insert_match (client, df):
         'draw_order': draw_order
     }]
 
-    client.insert_rows_json("mtgapipeline.mtga_silver.matches", match_dict)
-    # conn.execute(
-    #     """
-    #     INSERT INTO matches (match_id, deck_id, player_id, player_seat, start_time, duration_sec, winner_seat, game_format, draw_order)
-    #     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
-    #     """,
-    #     (int(match_id), int(deck_id), str(player_id), int(player_seat), start_time, int(duration_seconds), int(winner_seat), str(game_format), str(draw_order))
-    # )
+    errors = client.insert_rows_json("mtgapipeline.mtga_silver.matches", match_dict)
+    if errors:
+        print("Matches insert errors: " + str(errors))
+        
     return match_id
 
 if __name__ == "__main__":
