@@ -107,28 +107,44 @@ def insert_deck (client, df, match_id):
     #     deck_list_json = ''
     #     deck_sideboard_json = ''
     #     deck_commander_json = ''
-
+    # deck_name = ''
+    # deck_list_temp = []
+    # deck_sideboard = []
+    # deck_commander = ''
 
     try:
         nested = json.loads(deck_obj)
+        print('nested ' + str(nested))
 
         deck_name = nested.get('Summary').get('Name')
         deck_list_temp = nested.get('Deck').get('MainDeck')
         deck_sideboard = nested.get('Deck').get('Sideboard')
-        deck_commander = nested.get('Deck').get('CommandZone')
+        deck_commander_temp = nested.get('Deck').get('CommandZone')
+        if len(deck_commander_temp) == 0:
+            deck_commander = ''
+        else:
+            deck_commander = deck_commander_temp[0]
+
+        print('deck_list_temp1 ' + str(deck_list_temp))
+        print('deck_commander ' + str(deck_commander))
 
         # need to flatten deck_list
         deck_list = []
+        # if len(deck_list_temp) > 0:
         for item in deck_list_temp:
-            for _ in range(item.quantity):
-                deck_list.append(item.cardId)
+            print('deck_item ' + str(item))
+            for _ in range(item.get('quantity')):
+                deck_list.append(item.get('cardId'))
         deck_list = sorted(deck_list)
 
-    except:
+    except Exception as error_details:
+        print('insert_deck error: ' + str(error_details))
         deck_name = 'Blank'
         deck_list = []
         deck_sideboard = []
         deck_commander = ''
+
+
 
     #   checking if the deck already exists, returning the deck_id if it does
     job_config = bigquery.QueryJobConfig(
@@ -143,6 +159,9 @@ def insert_deck (client, df, match_id):
     )
     # deck_list and deck_sideboard are lists of oracle_ids
 
+
+    print('deck_list_temp2 ' + str(deck_list_temp))
+    print('deck_list' + str(deck_list))
     query_deck = """
         SELECT deck_id from `mtgapipeline.mtga_silver.decks`
         WHERE deck_hash = @deck_hash
@@ -201,8 +220,9 @@ def insert_deck (client, df, match_id):
             "side_hash": hash_list(deck_sideboard)
         }
     ]
-    client.insert_rows_json("mtgapipeline.mtga_silver.decks", row_to_insert)
-
+    errors = client.insert_rows_json("mtgapipeline.mtga_silver.decks", row_to_insert)
+    if errors:
+        print("Deck insert errors: " + str(errors))
 
     return deck_id
 
@@ -217,6 +237,20 @@ def insert_player (client, df):
         if item.get('userId') == player_id:
             display_name = item.get('playerName')
 
+
+    query_player = """
+        SELECT player_id from `mtgapipeline.mtga_silver.players`
+        WHERE player_id = @player_id
+        """
+
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("player_id", "STRING", player_id)
+            ]
+    )
+    query_job_player = next(client.query(query_player, job_config=job_config).result(), None)
+    if query_job_player is not None:
+        return
     # conn.execute(
     #     """
     #     INSERT INTO players (player_id, display_name)
@@ -233,7 +267,9 @@ def insert_player (client, df):
             "display_name": display_name
         }
     ]
-    client.insert_rows_json("mtgapipeline.mtga_silver.players", row_to_insert)
+    errors = client.insert_rows_json("mtgapipeline.mtga_silver.players", row_to_insert)
+    if errors:
+        print("Players insert errors: " + str(errors))
 
 
 # it will insert all the hands for the game with unique hand_ids
@@ -390,10 +426,11 @@ def insert_turn1_hands(client, df, match_id):
 
             hands_dict.append({
                 'hand_id':hand_id,
-                'init_hand': row['hand_p1_grpid'],
+                'player_id': player_id,
+                'match_id': match_id,
+                'initial_hand': row['hand_p1_grpid'],
                 'mulliganCount': mulliganCount,
-                'limbo_hand': row['hand_limbo_grpid'],
-                'player_num': player_num,
+                'discarded': row['hand_limbo_grpid'] if row['hand_limbo_grpid'] is not None else [],
                 'went_first': True
             })
             last_hand = row['hand_p1_grpid']
@@ -408,10 +445,11 @@ def insert_turn1_hands(client, df, match_id):
 
             hands_dict.append({
                 'hand_id':hand_id,
-                'init_hand': row['hand_p2_grpid'],
+                'player_id': player_id,
+                'match_id': match_id,
+                'initial_hand': row['hand_p2_grpid'],
                 'mulliganCount': mulliganCount,
-                'limbo_hand': row['hand_limbo_grpid'],
-                'player_num': player_num,
+                'discarded': row['hand_limbo_grpid'] if row['hand_limbo_grpid'] is not None else [],
                 'went_first': False
             })
             last_hand = row['hand_p2_grpid']
@@ -419,7 +457,9 @@ def insert_turn1_hands(client, df, match_id):
 
     #   inserting the rows into the table
 
-    client.insert_rows_json("mtgapipeline.mtga_silver.turn1_hands", hands_dict)
+    errors = client.insert_rows_json("mtgapipeline.mtga_silver.turn1_hands", hands_dict)
+    if errors:
+        print("T1 hands insert errors: " + str(errors))
     # for item in hands_dict:
     #     conn.execute(
     #         """
@@ -484,8 +524,6 @@ def insert_match (client, df):
 
     # will change draw_order after implementation
     draw_order = [
-        {'cards': []},
-        {'cards': []},
         {'cards': []}
     ]
     match_dict = [{
@@ -500,7 +538,9 @@ def insert_match (client, df):
         'draw_order': draw_order
     }]
 
-    client.insert_rows_json("mtgapipeline.mtga_silver.matches", match_dict)
+    errors = client.insert_rows_json("mtgapipeline.mtga_silver.matches", match_dict)
+    if errors:
+        print("Matches insert errors: " + str(errors))
     # conn.execute(
     #     """
     #     INSERT INTO matches (match_id, deck_id, player_id, player_seat, start_time, duration_sec, winner_seat, game_format, draw_order)
