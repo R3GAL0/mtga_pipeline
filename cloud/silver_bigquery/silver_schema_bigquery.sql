@@ -24,12 +24,11 @@ CREATE TABLE `mtgapipeline.mtga_silver.players` (
 
 CREATE TABLE `mtgapipeline.mtga_silver.dim_cards` (
     arena_id INT64 NOT NULL,      -- PK, MTGA key
-    oracle_id INT64 NOT NULL,     -- PK, Scryfall key
+    oracle_id STRING NOT NULL,    -- PK, Scryfall key
     card_name STRING,             -- Name of the Card
-    released_at DATE,             -- Date the card was released
     scryfall_uri STRING,          -- Link to the card on scryfall (shows additional card data)
     mana_cost STRING,             -- Mana cost of the card, type dependent
-    cmc INT64,                    -- total mana cost of the card, type agnostic
+    cmc INT64,                    -- (combined mana cost) total mana cost of the card, type agnostic
     colors STRING,                -- Unique mana cost colors (empty for costless cards, ie lands)
     color_identity STRING,        -- Unique color associations (populated for costless cards, ie lands)
     type_line STRING,             -- Card types (main type — sub type — sub sub type, )

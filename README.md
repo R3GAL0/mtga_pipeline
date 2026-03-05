@@ -93,10 +93,10 @@ How the pipeline was built step-by-step ([Pipeline Diagram](mtga_pipeline_flow.d
 - GCP Bucket: Setup the GCP bucket and get familiar with the platform
 - Cloud Run Jobs: Using the local version of the database deployed it to cloud run jobs as a Docker image.
 - BigQuery: Setup BigQuery on GCP, enforce the schema
+- make_table_bigquery.sql: Refactor make_table_duckdb.sql to work with BigQuery on GCP, moving from local development to the cloud.  
 
 ### To Be Completed / In Progress
 
-- make_table_bigquery.sql: Refactor make_table_duckdb.sql to work with BigQuery on GCP, moving from local development to the cloud.  
 - Gold layer transform: Perform aggregations on the silver layer tables to put on the dashbaord
 - Looker Studio: Make the dashboard
 - Extra Enhancements: Any extra enhancements (ie. draw order to matches tables)
