@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-IMAGE="mtga-silver"
+IMAGE="mtga-gold"
 
 # build the image
 # docker build -t gcr.io/mtgapipeline/$IMAGE:latest .
