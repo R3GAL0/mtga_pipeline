@@ -1,0 +1,6 @@
+#!/home/r3gal/develop/mtga_pipeline/cloud/gold_bigquery/.venv_dbt/bin/python
+import sys
+from jupyter_core.migrate import main
+if __name__ == '__main__':
+    sys.argv[0] = sys.argv[0].removesuffix('.exe')
+    sys.exit(main())
