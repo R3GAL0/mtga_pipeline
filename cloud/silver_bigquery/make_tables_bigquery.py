@@ -11,7 +11,7 @@ GENERAL PROCESS:
     insert the deck_list in decks, and a deck_list hash for uniqueness
     insert the match details in matches
       card draws -> draw_order
-    insert turn 1 hands with proper mappings from objectInstanceIds to oracle_ids
+    insert turn 1 hands with proper mappings from objectInstanceIds to arena_ids
       including extra rows for mulligans
 """
 
@@ -120,7 +120,7 @@ def insert_deck (client, df, match_id):
             bigquery.ScalarQueryParameter("side_hash", "STRING", hash_list(deck_sideboard)),
             ]
     )
-    # deck_list and deck_sideboard are lists of oracle_ids
+    # deck_list and deck_sideboard are lists of arena_ids
 
     query_deck = """
         SELECT deck_id from `mtgapipeline.mtga_silver.decks`
@@ -271,7 +271,7 @@ def insert_turn1_hands(client, df, match_id):
     df_hands['hand_limbo'] = df_hands['payload'].apply(get_zones, args=('limbo',))
 
     #   Mapping the grpid (unique card identifier) to the objectInstanceIds (in game object identifier)
-    #   grpid is eqivalent to arena_id/oracle_id from dim_cards table
+    #   grpid is eqivalent to arena_id from dim_cards table
     def map_grpid(hand, grpid_map): 
         if hand is None: 
             return None 
