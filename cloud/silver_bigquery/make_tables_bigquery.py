@@ -42,8 +42,8 @@ def insert_all(data_dir, client):
 
         for game_num, df_part in df.groupby('game_num'):
             insert_player(client, df_part)
-            match_id = insert_match(client, df_part)
-            insert_turn1_hands(client, df_part, match_id)
+            match_id, player_win = insert_match(client, df_part)
+            insert_turn1_hands(client, df_part, match_id, player_win)
 
 # increments the pk_counter table, returns the incremented PK value
 # used to get the next PK for each table (BigQuery doesnt have autoincrement on PKs)
@@ -193,7 +193,7 @@ def insert_player (client, df):
 
 
 # it will insert all the hands for the game with unique hand_ids
-def insert_turn1_hands(client, df, match_id):
+def insert_turn1_hands(client, df, match_id, player_win):
 
     # used to pull out the player hand objects from the nested payload
     def has_hand_zone(payload_line):
@@ -306,7 +306,6 @@ def insert_turn1_hands(client, df, match_id):
 
     #   Formatting the hands_dict for writting to disk
     hands_dict = []
-    last_hand = []
     mulliganCount = 0
     player_num = None
     for index, row in df_hands.iterrows():
@@ -329,9 +328,10 @@ def insert_turn1_hands(client, df, match_id):
                 'initial_hand': row['hand_p1_grpid'],
                 'mulliganCount': mulliganCount,
                 'discarded': row['hand_limbo_grpid'] if row['hand_limbo_grpid'] is not None else [],
-                'went_first': True
+                'went_first': True,
+                'player_win': player_win,
+                'final_hand': False
             })
-            last_hand = row['hand_p1_grpid']
 
         if row['hand_p2_grpid'] is not None:
             # getting a new hand_id for insertion
@@ -344,10 +344,12 @@ def insert_turn1_hands(client, df, match_id):
                 'initial_hand': row['hand_p2_grpid'],
                 'mulliganCount': mulliganCount,
                 'discarded': row['hand_limbo_grpid'] if row['hand_limbo_grpid'] is not None else [],
-                'went_first': False
+                'went_first': False,
+                'player_win': player_win,
+                'final_hand': False
             })
-            last_hand = row['hand_p2_grpid']\
 
+    hands_dict[-1]['final_hand'] = True
     #   inserting the rows into the table
 
     errors = client.insert_rows_json("mtgapipeline.mtga_silver.turn1_hands", hands_dict)
@@ -417,8 +419,12 @@ def insert_match (client, df):
     errors = client.insert_rows_json("mtgapipeline.mtga_silver.matches", match_dict)
     if errors:
         print("Matches insert errors: " + str(errors))
+
+    player_win = False
+    if player_seat == winner_seat:
+        player_win = True
         
-    return match_id
+    return match_id, player_win
 
 if __name__ == "__main__":
     insert_all()
