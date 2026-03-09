@@ -1,4 +1,10 @@
 
+-- Use the `ref` function to select from other models
+
+-- select *
+-- from {{ ref('my_first_dbt_model') }}
+-- where id = 1
+
 /*
     Welcome to your first dbt model!
     Did you know that you can also configure models directly within SQL files?
@@ -10,6 +16,7 @@
 {{ config(materialized='table') }}
 
 with source_data as (
+    SELECT
 
     select 1 as id
     union all
