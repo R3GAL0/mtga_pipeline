@@ -64,12 +64,14 @@ CLUSTER BY player_id;
 CREATE TABLE `mtgapipeline.mtga_gold.card_metrics` (
   player_id             STRING NOT NULL,-- Player identifier
   deck_id               INT64 NOT NULL, -- Deck identifier
+  deck_name             STRING,         -- Player defined, name of the deck
   arena_id              INT64 NOT NULL, -- Card identifier
   card_name             STRING,         -- Name of the card
+  scryfall_uri          STRING,         -- Link to the card on scryfall
   win_rate_draw         NUMERIC,        -- total_wins / total_matches, when the card is drawn (anytime during the match)
                                         -- Not currently implemented
   win_rate_opener       NUMERIC,        -- total_wins / total_matches, when the card is in the opening hand
-  total_in_deck         INT64,          -- total_wins / total_matches, when the card is in the opening hand
-  draw_chance           NUMERIC        -- deck size / total_in_deck, chance the card will be drawn 
+  total_in_deck         INT64          -- total_wins / total_matches, when the card is in the opening hand
+  --draw_chance           NUMERIC        -- deck size / total_in_deck, chance the card will be drawn 
 )
 CLUSTER BY player_id, deck_id;

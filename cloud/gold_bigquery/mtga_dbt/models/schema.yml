@@ -1,0 +1,30 @@
+
+version: 2
+
+sources:
+  - name: silver_layer
+    description: "The silver layer of tables"
+    database: mtgapipeline
+    schema: silver
+    tables:
+      - name: decks
+      - name: players
+      - name: matches
+      - name: turn1_hands
+      - name: dim_cards
+      - name: pk_counter
+
+
+# can add model tests here
+# models:
+#   - name: player_metrics
+#     description: "Gold table with aggregated player metrics"
+#     columns:
+#       - name: player_id
+#         tests:
+#           - not_null
+#           - unique
+#   - name: deck_metrics
+#     description: "Gold table with aggregated deck metrics"
+#   - name: card_metrics
+#     description: "Gold table with card stats"
