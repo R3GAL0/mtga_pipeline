@@ -1,12 +1,30 @@
 
 /*
+Gold layer: card_opener_stats
 
+Grain:
+    player_id, deck_id, arena_id (card)
+
+Purpose:
+    Produces card-level analytics measuring how often a card appearing
+    in the opening hand correlates with match wins.
+
+Derived features:
+    - win_rate_opener: win percentage when card appears in opening hand
+    - total_in_deck: number of copies of the card in the deck
+
+Notes:
+    Opening hand arrays are exploded with UNNEST to calculate
+    statistics at the individual card level.
+
+Possible expansion:
+    Add card draws over the game and measure card impact on the game as a function of time of draw
 
 */
 
 {{ config(materialized='table') }}
 
-
+-- calculating the win rate of the different opening cards
 with opener_cards as (
     SELECT 
         card as arena_id,
@@ -23,7 +41,7 @@ opener_stats AS (
     FROM opener_cards
     GROUP BY arena_id
 ),
-
+-- pulling all the data together
 source_data as (
     SELECT
         t1h.player_id,
