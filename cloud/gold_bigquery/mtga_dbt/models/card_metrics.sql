@@ -6,7 +6,7 @@
 
 {{ config(materialized='table') }}
 
-
+-- calculating the win rate of the different opening cards
 with opener_cards as (
     SELECT 
         card as arena_id,
@@ -23,7 +23,7 @@ opener_stats AS (
     FROM opener_cards
     GROUP BY arena_id
 ),
-
+-- pulling all the data together
 source_data as (
     SELECT
         t1h.player_id,
