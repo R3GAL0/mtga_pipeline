@@ -1,8 +1,18 @@
 
 /*
+Gold layer: player summary
 
+Grain:
+    player_id
 
+Derived Metrics:    (per player)
+    - Match performance metrics
+    - Rolling 30-day activity and win rate
+    - Mulligan behavior statistics
+    - Most frequently played deck
 
+Notes:
+    Rolling match statistics are calculated using window functions
 */
 
 {{ config(materialized='table') }}
@@ -58,7 +68,7 @@ match_data as (
         MAX(mat_win.matches_30d) as matches_30d,
         MAX(mat_win.total_wins_30d) as total_wins_30d,
 
-        -- showing window functions instead
+        -- showing window functions instead of using below method
 
         -- COUNTIF(
         --     mat.start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
@@ -134,9 +144,3 @@ source_data as (
 
 select *
 from source_data
-
-/*
-    Uncomment the line below to remove records with null `id` values
-*/
-
--- where id is not null

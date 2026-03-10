@@ -46,7 +46,7 @@ CREATE TABLE `mtgapipeline.mtga_gold.deck_metrics` (
   mulligan0_win_rate_pct NUMERIC,        -- Win rate with 0 mulligans as percentage
   mulligan1_win_rate_pct NUMERIC,        -- Win rate with 1 mulligan as percentage
   mulligan2_win_rate_pct NUMERIC,        -- Win rate with 2 mulligans as percentage
-  colors                STRING,         -- Colors in the deck (GU, WRU)
+  deck_colors                STRING,         -- Colors in the deck (GU, WRU)
   cmc_curve             ARRAY<INT64>,   -- number of cards per cost
   cmc_avg               NUMERIC,        -- avgerage mana cost of all cards in the deck 
   matchup_winrate_pct       ARRAY<STRUCT<   -- Winrate per matchup (not implemented) as percentage
