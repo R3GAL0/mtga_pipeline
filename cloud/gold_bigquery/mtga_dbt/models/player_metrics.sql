@@ -31,19 +31,22 @@ with deck_usage as (
         ON mat.deck_id = decks.deck_id
 
     GROUP BY mat.player_id, mat.deck_id
-),
-most_played_deck as (
-    SELECT *
-    FROM deck_usage
+
     QUALIFY ROW_NUMBER() OVER (
         PARTITION BY player_id
         ORDER BY match_cnt DESC
     ) = 1
 ),
+-- most_played_deck as (
+--     SELECT *
+--     FROM deck_usage
+-- ),
 -- rolling up match data to player level
 match_window as (
     SELECT 
         mat.player_id,
+        mat.start_time,
+
         count(*) OVER (
             PARTITION BY player_id
             -- ORDER BY mat.start_time
@@ -61,6 +64,43 @@ match_window as (
         ) AS total_wins_30d
 
     FROM {{source('mtga_silver', 'matches')}} mat
+
+    QUALIFY ROW_NUMBER() OVER(
+        PARTITION BY player_id
+        ORDER BY start_time DESC 
+    ) = 1
+),
+init_hands as (
+    SELECT 
+        player_id,
+        -- match_id,
+
+        COUNTIF(mulliganCount = 0) as mulligan0Count,
+        COUNTIF(mulliganCount = 1) as mulligan1Count,
+        COUNTIF(mulliganCount = 2) as mulligan2Count,
+        COUNTIF(mulliganCount = 0 AND player_win) as mulligan0Wins,
+        COUNTIF(mulliganCount = 1 AND player_win) as mulligan1Wins,
+        COUNTIF(mulliganCount = 2 AND player_win) as mulligan2Wins,
+
+        -- COUNTIF(hands.mulliganCount = 0) as mulligan0Count,
+        -- COUNTIF(hands.mulliganCount = 1) as mulligan1Count,
+        -- COUNTIF(hands.mulliganCount = 2) as mulligan2Count,
+        -- COUNTIF(hands.mulliganCount = 0 AND hands.player_win) as mulligan0Wins,
+        -- COUNTIF(hands.mulliganCount = 1 AND hands.player_win) as mulligan1Wins,
+        -- COUNTIF(hands.mulliganCount = 2 AND hands.player_win) as mulligan2Wins,
+
+        AVG(mulliganCount) as avg_mulligans
+    
+    FROM {{source('mtga_silver', 'turn1_hands')}} hands
+
+    WHERE final_hand
+    GROUP BY player_id
+
+    -- QUALIFY ROW_NUMBER() OVER(
+    --     PARTITION BY player_id
+    --     ORDER BY hands.hand_id DESC 
+    -- ) = 1
+
 ),
 match_data as (
     SELECT
@@ -83,16 +123,23 @@ match_data as (
         -- ) AS total_wins_30d,        
 
         -- mulligan winrate 0,1,2
-        COUNTIF(hands.mulliganCount = 0) as mulligan0Count,
-        COUNTIF(hands.mulliganCount = 1) as mulligan1Count,
-        COUNTIF(hands.mulliganCount = 2) as mulligan2Count,
-        COUNTIF(hands.mulliganCount = 0 AND hands.player_win) as mulligan0Wins,
-        COUNTIF(hands.mulliganCount = 1 AND hands.player_win) as mulligan1Wins,
-        COUNTIF(hands.mulliganCount = 2 AND hands.player_win) as mulligan2Wins,
+        MAX(hands.mulligan0Count) as mulligan0Count,
+        MAX(hands.mulligan1Count) as mulligan1Count,
+        MAX(hands.mulligan2Count) as mulligan2Count,
+        MAX(hands.mulligan0Wins) as mulligan0Wins,
+        MAX(hands.mulligan1Wins) as mulligan1Wins,
+        MAX(hands.mulligan2Wins) as mulligan2Wins,
+
+        MAX(hands.avg_mulligans) as avg_mulligans,
+        -- COUNTIF(hands.mulliganCount = 0) as mulligan0Count,
+        -- COUNTIF(hands.mulliganCount = 1) as mulligan1Count,
+        -- COUNTIF(hands.mulliganCount = 2) as mulligan2Count,
+        -- COUNTIF(hands.mulliganCount = 0 AND hands.player_win) as mulligan0Wins,
+        -- COUNTIF(hands.mulliganCount = 1 AND hands.player_win) as mulligan1Wins,
+        -- COUNTIF(hands.mulliganCount = 2 AND hands.player_win) as mulligan2Wins,
 
         -- averages
         AVG(mat.duration_sec) as avg_duration_sec,
-        AVG(IF(final_hand, hands.mulliganCount, NULL)) as avg_mulligans,
 
         -- most played deck id, name
         ANY_VALUE(mpd.deck_id) as most_played_deck_id, 
@@ -104,14 +151,16 @@ match_data as (
 
     FROM {{source('mtga_silver', 'matches')}} mat
 
-    LEFT JOIN {{source('mtga_silver', 'turn1_hands')}} hands
-        ON mat.match_id = hands.match_id
-        AND mat.player_id = hands.player_id -- shouldn't be needed but adding anyways
+    -- LEFT JOIN {{source('mtga_silver', 'turn1_hands')}} hands
+    LEFT JOIN init_hands hands
+        -- ON mat.match_id = hands.match_id
+        ON mat.player_id = hands.player_id -- shouldn't be needed but adding anyways
 
-    LEFT JOIN most_played_deck mpd
+    LEFT JOIN deck_usage mpd
         ON mat.player_id = mpd.player_id
 
     LEFT JOIN match_window mat_win
+        -- ON mat.match_id = mat_win.match_id
         ON mat.player_id = mat_win.player_id
 
     GROUP BY mat.player_id
