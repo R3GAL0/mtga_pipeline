@@ -42,8 +42,8 @@ def insert_all(data_dir, client):
 
         for game_num, df_part in df.groupby('game_num'):
             insert_player(client, df_part)
-            match_id, player_win = insert_match(client, df_part)
-            insert_turn1_hands(client, df_part, match_id, player_win)
+            match_id, player_win, deck_id = insert_match(client, df_part)
+            insert_turn1_hands(client, df_part, match_id, player_win, deck_id)
 
 # increments the pk_counter table, returns the incremented PK value
 # used to get the next PK for each table (BigQuery doesnt have autoincrement on PKs)
@@ -193,7 +193,7 @@ def insert_player (client, df):
 
 
 # it will insert all the hands for the game with unique hand_ids
-def insert_turn1_hands(client, df, match_id, player_win):
+def insert_turn1_hands(client, df, match_id, player_win, deck_id):
 
     # used to pull out the player hand objects from the nested payload
     def has_hand_zone(payload_line):
@@ -325,6 +325,7 @@ def insert_turn1_hands(client, df, match_id, player_win):
                 'hand_id':hand_id,
                 'player_id': player_id,
                 'match_id': match_id,
+                'deck_id': deck_id,
                 'initial_hand': row['hand_p1_grpid'],
                 'mulliganCount': mulliganCount,
                 'discarded': row['hand_limbo_grpid'] if row['hand_limbo_grpid'] is not None else [],
@@ -341,6 +342,7 @@ def insert_turn1_hands(client, df, match_id, player_win):
                 'hand_id':hand_id,
                 'player_id': player_id,
                 'match_id': match_id,
+                'deck_id': deck_id,
                 'initial_hand': row['hand_p2_grpid'],
                 'mulliganCount': mulliganCount,
                 'discarded': row['hand_limbo_grpid'] if row['hand_limbo_grpid'] is not None else [],
@@ -424,7 +426,7 @@ def insert_match (client, df):
     if player_seat == winner_seat:
         player_win = True
         
-    return match_id, player_win
+    return match_id, player_win, deck_id
 
 if __name__ == "__main__":
     insert_all()

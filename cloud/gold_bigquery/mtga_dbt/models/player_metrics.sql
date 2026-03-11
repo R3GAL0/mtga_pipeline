@@ -25,9 +25,9 @@ with deck_usage as (
         count(*) as match_cnt,
         ANY_VALUE(decks.deck_name) AS deck_name
 
-    FROM {{source('silver', 'matches')}} mat
+    FROM {{source('mtga_silver', 'matches')}} mat
 
-    LEFT JOIN {{source('silver', 'decks')}} decks 
+    LEFT JOIN {{source('mtga_silver', 'decks')}} decks 
         ON mat.deck_id = decks.deck_id
 
     GROUP BY mat.player_id, mat.deck_id
@@ -46,17 +46,21 @@ match_window as (
         mat.player_id,
         count(*) OVER (
             PARTITION BY player_id
-            ORDER BY mat.start_time
-            RANGE BETWEEN INTERVAL '30' DAY PRECEDING AND CURRENT ROW
+            -- ORDER BY mat.start_time
+            -- RANGE BETWEEN INTERVAL '30' DAY PRECEDING AND CURRENT ROW
+            ORDER BY TIMESTAMP_DIFF(mat.start_time, TIMESTAMP '2025-01-01', SECOND) ASC
+            RANGE BETWEEN 36000 PRECEDING AND CURRENT ROW
         ) AS matches_30d,
 
         COUNTIF(mat.winner_seat = mat.player_seat) OVER (
             PARTITION BY player_id
-            ORDER BY mat.start_time
-            RANGE BETWEEN INTERVAL '30' DAY PRECEDING AND CURRENT ROW
+            -- ORDER BY mat.start_time
+            -- RANGE BETWEEN INTERVAL '30' DAY PRECEDING AND CURRENT ROW
+            ORDER BY TIMESTAMP_DIFF(mat.start_time, TIMESTAMP '2025-01-01', SECOND) ASC
+            RANGE BETWEEN 36000 PRECEDING AND CURRENT ROW
         ) AS total_wins_30d
 
-    FROM {{source('silver', 'matches')}} mat
+    FROM {{source('mtga_silver', 'matches')}} mat
 ),
 match_data as (
     SELECT
@@ -98,9 +102,9 @@ match_data as (
         MAX(mat.start_time) as time_last_played
 
 
-    FROM {{source('silver', 'matches')}} mat
+    FROM {{source('mtga_silver', 'matches')}} mat
 
-    LEFT JOIN {{source('silver', 'turn1_hands')}} hands
+    LEFT JOIN {{source('mtga_silver', 'turn1_hands')}} hands
         ON mat.match_id = hands.match_id
         AND mat.player_id = hands.player_id -- shouldn't be needed but adding anyways
 
@@ -112,7 +116,7 @@ match_data as (
 
     GROUP BY mat.player_id
 
-)
+),
 source_data as (
     SELECT
         md.player_id,
@@ -138,7 +142,7 @@ source_data as (
 
     FROM match_data md
 
-    LEFT JOIN {{source('silver', 'players')}} pl
+    LEFT JOIN {{source('mtga_silver', 'players')}} pl
         ON md.player_id = pl.player_id
 )
 
