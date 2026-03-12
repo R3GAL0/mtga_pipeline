@@ -15,6 +15,9 @@ Notes:
     Card arrays from the decks table are exploded to join against dim_cards.
     This may become inefficient at scale and could be replaced by a
     dedicated deck_cards bridge table.
+    Cards not found in dim_card table will have null cmc values and be 
+    excluded from cmc calcs (ie cmc_avg and cmc_curve).
+    cmc_avg excludes lands (0 mana cards) and null (cards not found)
 */
 
 {{ config(materialized='table') }}
@@ -49,41 +52,55 @@ card_data as (
         ON CAST(deck_card AS INT64) = cards.arena_id
 ),
 card_agg_data as (
-    SELECT 
-        deck_id,
-        AVG(cmc) as cmc_avg,
-
-        -- cmc_curve, 
-        -- The highest mana cards ever printed for MTG was one 16 mana card and a 1 Million cmc card (it is a gimick card)
-        -- asside from these 2 cards there are a couple at 15 mana (these are used)
-        -- ARRAY(
-        --     SELECT COUNTIF(LEAST(cmc,16) = x)
-        --     FROM UNNEST(GENERATE_ARRAY(0, 16)) AS x
-        -- ) AS cmc_curve,
-        ARRAY_AGG(cnt ORDER BY gen_array_val) AS cmc_curve,
-
-        -- deck colors,
-        STRING_AGG(DISTINCT char, '' ORDER BY char) AS deck_colors
-    
-    FROM (
+    -- count cards per cmc bucket
+    with cmc_counts as (
         SELECT
             deck_id,
-            cmc,
-            char,
-            gen_array_val,
-            COUNTIF(LEAST(cmc,16) = gen_array_val) OVER (PARTITION BY deck_id, gen_array_val) AS cnt 
+            LEAST(cmc,16) as cmc_bucket,
+            COUNT(*) as cnt
+        FROM card_data
+        GROUP BY deck_id, cmc_bucket
+    ),
 
-        FROM card_data 
-        CROSS JOIN UNNEST(GENERATE_ARRAY(0,16)) AS gen_array_val
-        CROSS JOIN UNNEST(SPLIT(color_identity, '')) AS char 
-
+    -- build an array to bin the cards by cmc
+        -- The highest mana cards ever printed for MTG was one 16 mana card and a 1 Million cmc card (it is a gimick card)
+        -- asside from these 2 cards there are a couple at 15 mana (these are used)
+    cmc_curve as (
+        SELECT
+            d.deck_id,
+            ARRAY_AGG(IFNULL(cnt,0) ORDER BY cmc_val) as cmc_curve
+        FROM (
+            SELECT DISTINCT deck_id FROM card_data
+        ) d
+        CROSS JOIN UNNEST(GENERATE_ARRAY(0,16)) as cmc_val
+        LEFT JOIN cmc_counts c
+            ON d.deck_id = c.deck_id
+            AND cmc_val = c.cmc_bucket
+        GROUP BY deck_id
+    ),
+    -- getting the unique colors per deck. 
+        -- color_identity is unique per card and is a string ie BW for black and white
+    color_identity as (
+        SELECT
+            deck_id,
+            STRING_AGG(DISTINCT char, '' ORDER BY char) as deck_colors
+        FROM card_data
+        CROSS JOIN UNNEST(SPLIT(color_identity, '')) as char
+        GROUP BY deck_id
     )
-    
-    -- card_data
 
-    -- CROSS JOIN UNNEST(SPLIT(color_identity, '')) AS char
-
-    GROUP BY deck_id
+    SELECT
+        c.deck_id,
+        -- skipping lands and missing cards from cmc_avg
+        AVG(CASE WHEN c.cmc > 0 then c.cmc END) as cmc_avg,
+        cc.cmc_curve,
+        ci.deck_colors
+    FROM card_data c
+    LEFT JOIN cmc_curve cc
+        ON c.deck_id = cc.deck_id
+    LEFT JOIN color_identity ci
+        ON c.deck_id = ci.deck_id
+    GROUP BY c.deck_id, cc.cmc_curve, ci.deck_colors
 
 ),
 -- aggregating the mulligan data
@@ -118,19 +135,22 @@ source_data as (
         pl.display_name,
 
         -- match data
-        ROUND(mat_d.avg_duration_sec, 0),
+        ROUND(mat_d.avg_duration_sec, 2) as avg_duration_sec,
         mat_d.total_matches,
         mat_d.total_wins,
         ROUND(SAFE_DIVIDE(mat_d.total_wins, mat_d.total_matches)*100, 2) as win_rate_pct,
 
         -- mulligan data
-        md.avg_mulligans,
+        ROUND(md.avg_mulligans, 2) as avg_mulligans,
         ROUND(SAFE_DIVIDE(md.mulligan0Wins, md.mulligan0Count)*100, 2) as mulligan0_win_rate_pct,
+        md.mulligan0Count,
         ROUND(SAFE_DIVIDE(md.mulligan1Wins, md.mulligan1Count)*100, 2) as mulligan1_win_rate_pct,
+        md.mulligan1Count,
         ROUND(SAFE_DIVIDE(md.mulligan2Wins, md.mulligan2Count)*100, 2) as mulligan2_win_rate_pct,
+        md.mulligan2Count,
 
         -- card aggregate data
-        cad.cmc_avg,
+        ROUND(cad.cmc_avg, 2) as cmc_avg,
         cad.cmc_curve,
         cad.deck_colors
 
@@ -148,7 +168,13 @@ source_data as (
     LEFT JOIN card_agg_data cad
         on decks.deck_id = cad.deck_id
 )
+-- PASSED
+-- select * from match_data
+-- select * from card_data
+-- select * from card_agg_data
 
-select *
-from source_data
+-- CHECKING
+-- select * from mulligan_data
+
+select * from source_data
 

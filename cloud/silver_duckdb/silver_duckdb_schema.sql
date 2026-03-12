@@ -20,8 +20,7 @@ CREATE TABLE players (
 CREATE TABLE dim_cards (
     arena_id VARCHAR PRIMARY KEY,
     oracle_id VARCHAR,
-    name VARCHAR,
-    released_at DATE,
+    card_name VARCHAR,
     scryfall_uri VARCHAR,
     mana_cost VARCHAR,
     cmc INTEGER,
@@ -31,8 +30,7 @@ CREATE TABLE dim_cards (
     set_code VARCHAR,
     set_name VARCHAR,
     set_type VARCHAR,
-    rarity VARCHAR,
-    legalities VARCHAR
+    rarity VARCHAR
 );
 
 CREATE TABLE matches (

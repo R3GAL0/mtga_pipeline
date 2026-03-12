@@ -41,7 +41,8 @@ opener_stats AS (
         arena_id,
         player_id,
         deck_id,
-        ROUND(AVG(CASE WHEN player_win THEN 1 ELSE 0 END)*100, 2) AS win_rate_opener
+        ROUND(AVG(CASE WHEN player_win THEN 1 ELSE 0 END)*100, 2) AS win_rate_opener,
+        count(*) as drawn_opener_cnt
     FROM opener_cards
     GROUP BY arena_id, player_id, deck_id
 ),
@@ -58,6 +59,7 @@ source_data as (
         NULL as win_rate_draw,      -- to be added later, don't have necessary downstream column/data yet
 
         os.win_rate_opener,    -- win% when this card is in the opening hand
+        os.drawn_opener_cnt,   -- number of times this card was drawn in the opener and kept in the final hand
 
         ARRAY_LENGTH(
             ARRAY(
