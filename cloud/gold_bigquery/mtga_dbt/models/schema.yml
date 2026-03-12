@@ -2,10 +2,10 @@
 version: 2
 
 sources:
-  - name: silver_layer
+  - name: mtga_silver
     description: "The silver layer of tables"
     database: mtgapipeline
-    schema: silver
+    schema: mtga_silver
     tables:
       - name: decks
       - name: players

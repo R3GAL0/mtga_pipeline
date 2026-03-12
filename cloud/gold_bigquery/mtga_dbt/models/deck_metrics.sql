@@ -15,6 +15,9 @@ Notes:
     Card arrays from the decks table are exploded to join against dim_cards.
     This may become inefficient at scale and could be replaced by a
     dedicated deck_cards bridge table.
+    Cards not found in dim_card table will have null cmc values and be 
+    excluded from cmc calcs (ie cmc_avg and cmc_curve).
+    cmc_avg excludes lands (0 mana cards) and null (cards not found)
 */
 
 {{ config(materialized='table') }}
@@ -27,9 +30,7 @@ with match_data as (
         COUNT(*) as total_matches,
         COUNTIF(player_seat = winner_seat) as total_wins
 
-        cmc_curve
-
-    FROM {{source('silver', 'matches')}} mat
+    FROM {{source('mtga_silver', 'matches')}} mat
     
     GROUP BY deck_id
 ),
@@ -39,39 +40,67 @@ card_data as (
     SELECT
         decks.deck_id,
         deck_card,
-        cards.card_name
+        cards.card_name,
         cards.color_identity,
         cards.cmc
 
-    FROM {{source('silver', 'decks')}} decks
+    FROM {{source('mtga_silver', 'decks')}} decks
 
     CROSS JOIN UNNEST(deck_list) as deck_card
 
-    LEFT JOIN {{source('silver', 'dim_cards')}} cards
+    LEFT JOIN {{source('mtga_silver', 'dim_cards')}} cards
         ON CAST(deck_card AS INT64) = cards.arena_id
 ),
 card_agg_data as (
-    SELECT 
-        deck_id,
-        AVG(cmc) as cmc_avg,
+    -- count cards per cmc bucket
+    with cmc_counts as (
+        SELECT
+            deck_id,
+            LEAST(cmc,16) as cmc_bucket,
+            COUNT(*) as cnt
+        FROM card_data
+        GROUP BY deck_id, cmc_bucket
+    ),
 
-        -- cmc_curve, 
+    -- build an array to bin the cards by cmc
         -- The highest mana cards ever printed for MTG was one 16 mana card and a 1 Million cmc card (it is a gimick card)
         -- asside from these 2 cards there are a couple at 15 mana (these are used)
-        ARRAY(
-            SELECT COUNTIF(LEAST(cmc,16) = x)
-            FROM UNNEST(GENERATE_ARRAY(0, 16)) AS x
-        ) AS cmc_curve,
+    cmc_curve as (
+        SELECT
+            d.deck_id,
+            ARRAY_AGG(IFNULL(cnt,0) ORDER BY cmc_val) as cmc_curve
+        FROM (
+            SELECT DISTINCT deck_id FROM card_data
+        ) d
+        CROSS JOIN UNNEST(GENERATE_ARRAY(0,16)) as cmc_val
+        LEFT JOIN cmc_counts c
+            ON d.deck_id = c.deck_id
+            AND cmc_val = c.cmc_bucket
+        GROUP BY deck_id
+    ),
+    -- getting the unique colors per deck. 
+        -- color_identity is unique per card and is a string ie BW for black and white
+    color_identity as (
+        SELECT
+            deck_id,
+            STRING_AGG(DISTINCT char, '' ORDER BY char) as deck_colors
+        FROM card_data
+        CROSS JOIN UNNEST(SPLIT(color_identity, '')) as char
+        GROUP BY deck_id
+    )
 
-
-        -- deck colors,
-        STRING_AGG(DISTINCT char, '' ORDER BY char) AS deck_colors
-    
-    FROM card_data
-
-    CROSS JOIN UNNEST(SPLIT(color_identity, '')) AS char
-
-    GROUP BY deck_id
+    SELECT
+        c.deck_id,
+        -- skipping lands and missing cards from cmc_avg
+        AVG(CASE WHEN c.cmc > 0 then c.cmc END) as cmc_avg,
+        cc.cmc_curve,
+        ci.deck_colors
+    FROM card_data c
+    LEFT JOIN cmc_curve cc
+        ON c.deck_id = cc.deck_id
+    LEFT JOIN color_identity ci
+        ON c.deck_id = ci.deck_id
+    GROUP BY c.deck_id, cc.cmc_curve, ci.deck_colors
 
 ),
 -- aggregating the mulligan data
@@ -88,11 +117,13 @@ mulligan_data as (
         COUNTIF(t1h.mulliganCount = 1 AND t1h.player_win) as mulligan1Wins,
         COUNTIF(t1h.mulliganCount = 2 AND t1h.player_win) as mulligan2Wins
 
-    FROM {{source('silver', 'decks')}} decks
+    FROM {{source('mtga_silver', 'decks')}} decks
 
-    LEFT JOIN {{source('silver', 'turn1_hands')}} t1h
+    LEFT JOIN {{source('mtga_silver', 'turn1_hands')}} t1h
         ON decks.deck_id = t1h.deck_id
         and t1h.final_hand
+    
+    GROUP BY decks.deck_id
 ),
 -- final calcuations/formatting
 source_data as (
@@ -104,25 +135,28 @@ source_data as (
         pl.display_name,
 
         -- match data
-        mat_d.avg_duration_sec,
+        ROUND(mat_d.avg_duration_sec, 2) as avg_duration_sec,
         mat_d.total_matches,
         mat_d.total_wins,
         ROUND(SAFE_DIVIDE(mat_d.total_wins, mat_d.total_matches)*100, 2) as win_rate_pct,
 
         -- mulligan data
-        md.avg_mulligans,
+        ROUND(md.avg_mulligans, 2) as avg_mulligans,
         ROUND(SAFE_DIVIDE(md.mulligan0Wins, md.mulligan0Count)*100, 2) as mulligan0_win_rate_pct,
+        md.mulligan0Count,
         ROUND(SAFE_DIVIDE(md.mulligan1Wins, md.mulligan1Count)*100, 2) as mulligan1_win_rate_pct,
+        md.mulligan1Count,
         ROUND(SAFE_DIVIDE(md.mulligan2Wins, md.mulligan2Count)*100, 2) as mulligan2_win_rate_pct,
+        md.mulligan2Count,
 
         -- card aggregate data
-        cad.cmc_avg,
+        ROUND(cad.cmc_avg, 2) as cmc_avg,
         cad.cmc_curve,
-        cad.deck_colors,
+        cad.deck_colors
 
-    FROM {{source('silver', 'decks')}} decks
+    FROM {{source('mtga_silver', 'decks')}} decks
 
-    LEFT JOIN {{source('silver', 'players')}} pl
+    LEFT JOIN {{source('mtga_silver', 'players')}} pl
         ON decks.player_id = pl.player_id
 
     LEFT JOIN match_data mat_d 
@@ -134,7 +168,13 @@ source_data as (
     LEFT JOIN card_agg_data cad
         on decks.deck_id = cad.deck_id
 )
+-- PASSED
+-- select * from match_data
+-- select * from card_data
+-- select * from card_agg_data
 
-select *
-from source_data
+-- CHECKING
+-- select * from mulligan_data
+
+select * from source_data
 

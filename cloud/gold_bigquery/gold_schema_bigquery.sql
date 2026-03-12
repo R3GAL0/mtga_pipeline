@@ -22,9 +22,12 @@ CREATE TABLE `mtgapipeline.mtga_gold.player_metrics` (
 
   avg_duration_sec      NUMERIC,        -- Average match duration
   avg_mulligans         NUMERIC,        -- Average mulligans per match
-  mulligan0_win_rate_pct NUMERIC,        -- Win rate with 0 mulligans as percentage
-  mulligan1_win_rate_pct NUMERIC,        -- Win rate with 1 mulligan as percentage
-  mulligan2_win_rate_pct NUMERIC,        -- Win rate with 2 mulligans as percentage
+  mulligan0_win_rate_pct NUMERIC,       -- Win rate with 0 mulligans as percentage
+  mulligan1_win_rate_pct NUMERIC,       -- Win rate with 1 mulligan as percentage
+  mulligan2_win_rate_pct NUMERIC,       -- Win rate with 2 mulligans as percentage
+  mulligan0Count        INT64,          -- Number of games for the given mulligan num,
+  mulligan1Count        INT64,          -- Number of games for the given mulligan num,
+  mulligan2Count        INT64,          -- Number of games for the given mulligan num,
   most_played_deck_id   INT64,          -- Deck_id of most played deck
   most_played_deck_name STRING,         -- Name of the most played deck
   time_last_played      TIMESTAMP       -- Timestamp of most recent match
@@ -71,6 +74,7 @@ CREATE TABLE `mtgapipeline.mtga_gold.card_metrics` (
   win_rate_draw_pct     NUMERIC,        -- total_wins / total_matches, when the card is drawn (anytime during the match) as percentage
                                         -- Not currently implemented
   win_rate_opener_pct   NUMERIC,        -- total_wins / total_matches, when the card is in the opening hand as percentage
+  drawn_opener_cnt      INT64,          -- number of times this card was drawn in the opening hand and kept in the final hand
   total_in_deck         INT64           -- total number of this card in the deck
   --draw_chance           NUMERIC        -- deck size / total_in_deck, chance the card will be drawn 
 )

@@ -26,7 +26,7 @@ input_path = "/home/r3gal/develop/mtga_pipeline/data/references"
 
 card_list = []
 
-with open(f'{input_path}/default-cards-20260304100728.json', 'rb') as f:
+with open(f'{input_path}/default-cards-20260312090730.json', 'rb') as f:
     # , open(output_path_file, 'w') as csvfile:
 
     # fieldnames = ["arena_id", "oracle_id", "card_name", "scryfall_uri", "mana_cost", "cmc", "colors", "color_identity", "type_line", "set_code", "set_name", "set_type", "rarity"]

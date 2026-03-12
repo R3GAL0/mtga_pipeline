@@ -15,7 +15,7 @@ DROP TABLE IF EXISTS mtgapipeline.mtga_silver.dim_cards;
 DROP TABLE IF EXISTS mtgapipeline.mtga_silver.matches;
 DROP TABLE IF EXISTS mtgapipeline.mtga_silver.decks;
 DROP TABLE IF EXISTS mtgapipeline.mtga_silver.turn1_hands;
--- DROP TABLE IF EXISTS mtgapipeline.mtga_silver.pk_counter;
+DROP TABLE IF EXISTS mtgapipeline.mtga_silver.pk_counter;
 
 CREATE TABLE `mtgapipeline.mtga_silver.players` (
   player_id STRING NOT NULL,       -- PK, from Wizards of the Coast
@@ -76,6 +76,7 @@ CREATE TABLE `mtgapipeline.mtga_silver.turn1_hands` (
   hand_id INT64 NOT NULL,           -- PK
   player_id STRING NOT NULL,        -- FK, references players
   match_id INT64 NOT NULL,          -- FK, references matches
+  deck_id INT64 NOT NULL,           -- FK, references decks
   initial_hand ARRAY<INT64>,        -- The hand drawn, using oracle_id, prior to selecting cards to keep if mulliganCount > 0
   mulliganCount INT64,              -- The mulligan count for the hand (0-7)
   discarded ARRAY<INT64>,           -- The hand after selecting cards to mulligan, using oracle_id
@@ -90,6 +91,12 @@ CREATE TABLE `mtgapipeline.mtga_silver.pk_counter` (
   pk_name STRING NOT NULL,          -- (match_id, deck_id, hand_id)
   current_value INT64 NOT null
 );
+
+-- Initializing the pk_counter table
+INSERT INTO `mtgapipeline.mtga_silver.pk_counter` (pk_name, current_value)
+VALUES ('match_id', 0),
+('deck_id', 0),
+('hand_id', 0);
 
 -- CREATE TABLE `mtgapipeline.mtga_silver.rank_progression` (
 --   player_id STRING NOT NULL,         -- PK, References players.player_id
