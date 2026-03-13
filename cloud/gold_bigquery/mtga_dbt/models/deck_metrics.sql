@@ -62,21 +62,42 @@ card_agg_data as (
         GROUP BY deck_id, cmc_bucket
     ),
 
-    -- build an array to bin the cards by cmc
+    -- build the bucket columns for the cmc_curve (looker cant take arrays or pre binned values)
         -- The highest mana cards ever printed for MTG was one 16 mana card and a 1 Million cmc card (it is a gimick card)
         -- asside from these 2 cards there are a couple at 15 mana (these are used)
     cmc_curve as (
         SELECT
-            d.deck_id,
-            ARRAY_AGG(IFNULL(cnt,0) ORDER BY cmc_val) as cmc_curve
-        FROM (
-            SELECT DISTINCT deck_id FROM card_data
-        ) d
-        CROSS JOIN UNNEST(GENERATE_ARRAY(0,16)) as cmc_val
-        LEFT JOIN cmc_counts c
-            ON d.deck_id = c.deck_id
-            AND cmc_val = c.cmc_bucket
-        GROUP BY deck_id
+            c.deck_id,
+            CASE WHEN c.cmc_bucket = 0 then c.cnt ELSE 0 END as cmc_bin_0,
+            CASE WHEN c.cmc_bucket = 1 then c.cnt ELSE 0 END as cmc_bin_1,
+            CASE WHEN c.cmc_bucket = 2 then c.cnt ELSE 0 END as cmc_bin_2,
+            CASE WHEN c.cmc_bucket = 3 then c.cnt ELSE 0 END as cmc_bin_3,
+            CASE WHEN c.cmc_bucket = 4 then c.cnt ELSE 0 END as cmc_bin_4,
+            CASE WHEN c.cmc_bucket = 5 then c.cnt ELSE 0 END as cmc_bin_5,
+            CASE WHEN c.cmc_bucket = 6 then c.cnt ELSE 0 END as cmc_bin_6,
+            CASE WHEN c.cmc_bucket = 7 then c.cnt ELSE 0 END as cmc_bin_7,
+            CASE WHEN c.cmc_bucket = 8 then c.cnt ELSE 0 END as cmc_bin_8,
+            CASE WHEN c.cmc_bucket = 9 then c.cnt ELSE 0 END as cmc_bin_9,
+            CASE WHEN c.cmc_bucket = 10 then c.cnt ELSE 0 END as cmc_bin_10,
+            CASE WHEN c.cmc_bucket = 11 then c.cnt ELSE 0 END as cmc_bin_11,
+            CASE WHEN c.cmc_bucket = 12 then c.cnt ELSE 0 END as cmc_bin_12,
+            CASE WHEN c.cmc_bucket = 13 then c.cnt ELSE 0 END as cmc_bin_13,
+            CASE WHEN c.cmc_bucket = 14 then c.cnt ELSE 0 END as cmc_bin_14,
+            CASE WHEN c.cmc_bucket = 15 then c.cnt ELSE 0 END as cmc_bin_15,
+            CASE WHEN c.cmc_bucket = 16 then c.cnt ELSE 0 END as cmc_bin_16
+
+            -- ARRAY_AGG(IFNULL(c.cnt,0) ORDER BY cmc_val) as cmc_curve
+
+        FROM cmc_counts c
+        -- (
+        --     SELECT DISTINCT deck_id FROM card_data
+        -- ) d
+        -- -- CROSS JOIN UNNEST(GENERATE_ARRAY(0,16)) as cmc_val
+        -- LEFT JOIN cmc_counts c
+        --     ON d.deck_id = c.deck_id
+        --     -- AND cmc_val = c.cmc_bucket
+
+        -- GROUP BY deck_id
     ),
     -- getting the unique colors per deck. 
         -- color_identity is unique per card and is a string ie BW for black and white
@@ -93,14 +114,32 @@ card_agg_data as (
         c.deck_id,
         -- skipping lands and missing cards from cmc_avg
         AVG(CASE WHEN c.cmc > 0 then c.cmc END) as cmc_avg,
-        cc.cmc_curve,
+        
+        Max(cc.cmc_bin_0) as cmc_bin_0,
+        Max(cc.cmc_bin_1) as cmc_bin_1,
+        Max(cc.cmc_bin_2) as cmc_bin_2,
+        Max(cc.cmc_bin_3) as cmc_bin_3,
+        Max(cc.cmc_bin_4) as cmc_bin_4,
+        Max(cc.cmc_bin_5) as cmc_bin_5,
+        Max(cc.cmc_bin_6) as cmc_bin_6,
+        Max(cc.cmc_bin_7) as cmc_bin_7,
+        Max(cc.cmc_bin_8) as cmc_bin_8,
+        Max(cc.cmc_bin_9) as cmc_bin_9,
+        Max(cc.cmc_bin_10) as cmc_bin_10,
+        Max(cc.cmc_bin_11) as cmc_bin_11,
+        Max(cc.cmc_bin_12) as cmc_bin_12,
+        Max(cc.cmc_bin_13) as cmc_bin_13,
+        Max(cc.cmc_bin_14) as cmc_bin_14,
+        Max(cc.cmc_bin_15) as cmc_bin_15,
+        Max(cc.cmc_bin_16) as cmc_bin_16,
+
         ci.deck_colors
     FROM card_data c
     LEFT JOIN cmc_curve cc
         ON c.deck_id = cc.deck_id
     LEFT JOIN color_identity ci
         ON c.deck_id = ci.deck_id
-    GROUP BY c.deck_id, cc.cmc_curve, ci.deck_colors
+    GROUP BY c.deck_id, ci.deck_colors
 
 ),
 -- aggregating the mulligan data
@@ -151,7 +190,24 @@ source_data as (
 
         -- card aggregate data
         ROUND(cad.cmc_avg, 2) as cmc_avg,
-        cad.cmc_curve,
+        -- cad.cmc_curve,
+        cad.cmc_bin_0,
+        cad.cmc_bin_1,
+        cad.cmc_bin_2,
+        cad.cmc_bin_3,
+        cad.cmc_bin_4,
+        cad.cmc_bin_5,
+        cad.cmc_bin_6,
+        cad.cmc_bin_7,
+        cad.cmc_bin_8,
+        cad.cmc_bin_9,
+        cad.cmc_bin_10,
+        cad.cmc_bin_11,
+        cad.cmc_bin_12,
+        cad.cmc_bin_13,
+        cad.cmc_bin_14,
+        cad.cmc_bin_15,
+        cad.cmc_bin_16,
         cad.deck_colors
 
     FROM {{source('mtga_silver', 'decks')}} decks

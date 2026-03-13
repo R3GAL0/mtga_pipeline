@@ -1,7 +1,12 @@
--- Layer: Gold
--- Target: BigQuery
--- Description:
 
+/*
+Layer: Gold
+Target: BigQuery
+Description:
+  Schema for the gold layer. 
+  Table columns may be outdated, this document was made but process doesnt require it...
+
+*/
 
 -- bq query --use_legacy_sql=false < gold_schema_bigquery.sql
 
