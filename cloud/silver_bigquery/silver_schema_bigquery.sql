@@ -11,7 +11,7 @@
 -- bq query --use_legacy_sql=false < silver_schema_bigquery.sql
 
 DROP TABLE IF EXISTS mtgapipeline.mtga_silver.players;
-DROP TABLE IF EXISTS mtgapipeline.mtga_silver.dim_cards;
+-- DROP TABLE IF EXISTS mtgapipeline.mtga_silver.dim_cards;
 DROP TABLE IF EXISTS mtgapipeline.mtga_silver.matches;
 DROP TABLE IF EXISTS mtgapipeline.mtga_silver.decks;
 DROP TABLE IF EXISTS mtgapipeline.mtga_silver.turn1_hands;
@@ -22,21 +22,21 @@ CREATE TABLE `mtgapipeline.mtga_silver.players` (
   display_name STRING              -- Display name of the player
 );
 
-CREATE TABLE `mtgapipeline.mtga_silver.dim_cards` (
-    arena_id INT64 NOT NULL,      -- PK, MTGA key
-    oracle_id STRING NOT NULL,    -- PK, Scryfall key
-    card_name STRING,             -- Name of the Card
-    scryfall_uri STRING,          -- Link to the card on scryfall (shows additional card data)
-    mana_cost STRING,             -- Mana cost of the card, type dependent
-    cmc INT64,                    -- (combined mana cost) total mana cost of the card, type agnostic
-    colors STRING,                -- Unique mana cost colors (empty for costless cards, ie lands)
-    color_identity STRING,        -- Unique color associations (populated for costless cards, ie lands)
-    type_line STRING,             -- Card types (main type — sub type — sub sub type, )
-    set_code STRING,              -- Code of the set the card is from
-    set_name STRING,              -- Name of the set the card is from
-    set_type STRING,              -- Type of the set the card is from
-    rarity STRING                 -- Rarity of the Card (Common, Uncommon, rare, mythic rare)
-);
+-- CREATE TABLE `mtgapipeline.mtga_silver.dim_cards` (
+--     arena_id INT64 NOT NULL,      -- PK, MTGA key
+--     oracle_id STRING NOT NULL,    -- PK, Scryfall key
+--     card_name STRING,             -- Name of the Card
+--     scryfall_uri STRING,          -- Link to the card on scryfall (shows additional card data)
+--     mana_cost STRING,             -- Mana cost of the card, type dependent
+--     cmc INT64,                    -- (combined mana cost) total mana cost of the card, type agnostic
+--     colors STRING,                -- Unique mana cost colors (empty for costless cards, ie lands)
+--     color_identity STRING,        -- Unique color associations (populated for costless cards, ie lands)
+--     type_line STRING,             -- Card types (main type — sub type — sub sub type, )
+--     set_code STRING,              -- Code of the set the card is from
+--     set_name STRING,              -- Name of the set the card is from
+--     set_type STRING,              -- Type of the set the card is from
+--     rarity STRING                 -- Rarity of the Card (Common, Uncommon, rare, mythic rare)
+-- );
 
 CREATE TABLE `mtgapipeline.mtga_silver.matches` (
   match_id INT64 NOT NULL,        -- PK

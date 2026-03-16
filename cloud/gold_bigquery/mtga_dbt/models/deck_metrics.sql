@@ -164,6 +164,22 @@ mulligan_data as (
     
     GROUP BY decks.deck_id
 ),
+deck_play_rate as (
+    SELECT 
+        mat.deck_id, 
+        mat.player_id,
+        count(*) as match_cnt,
+        ANY_VALUE(decks.deck_name) AS deck_name,
+        DENSE_RANK() OVER (PARTITION BY mat.player_id ORDER BY count(*) DESC) as deck_rank
+
+    FROM {{source('mtga_silver', 'matches')}} mat
+
+    LEFT JOIN {{source('mtga_silver', 'decks')}} decks 
+        ON mat.deck_id = decks.deck_id
+
+    GROUP BY mat.player_id, mat.deck_id
+
+),
 -- final calcuations/formatting
 source_data as (
     SELECT
@@ -191,24 +207,26 @@ source_data as (
         -- card aggregate data
         ROUND(cad.cmc_avg, 2) as cmc_avg,
         -- cad.cmc_curve,
-        cad.cmc_bin_0,
-        cad.cmc_bin_1,
-        cad.cmc_bin_2,
-        cad.cmc_bin_3,
-        cad.cmc_bin_4,
-        cad.cmc_bin_5,
-        cad.cmc_bin_6,
-        cad.cmc_bin_7,
-        cad.cmc_bin_8,
-        cad.cmc_bin_9,
-        cad.cmc_bin_10,
-        cad.cmc_bin_11,
-        cad.cmc_bin_12,
-        cad.cmc_bin_13,
-        cad.cmc_bin_14,
-        cad.cmc_bin_15,
-        cad.cmc_bin_16,
-        cad.deck_colors
+        -- cad.cmc_bin_0,
+        -- cad.cmc_bin_1,
+        -- cad.cmc_bin_2,
+        -- cad.cmc_bin_3,
+        -- cad.cmc_bin_4,
+        -- cad.cmc_bin_5,
+        -- cad.cmc_bin_6,
+        -- cad.cmc_bin_7,
+        -- cad.cmc_bin_8,
+        -- cad.cmc_bin_9,
+        -- cad.cmc_bin_10,
+        -- cad.cmc_bin_11,
+        -- cad.cmc_bin_12,
+        -- cad.cmc_bin_13,
+        -- cad.cmc_bin_14,
+        -- cad.cmc_bin_15,
+        -- cad.cmc_bin_16,
+        cad.deck_colors,
+        dpr.match_cnt,
+        dpr.deck_rank
 
     FROM {{source('mtga_silver', 'decks')}} decks
 
@@ -223,6 +241,9 @@ source_data as (
 
     LEFT JOIN card_agg_data cad
         on decks.deck_id = cad.deck_id
+
+    LEFT JOIN deck_play_rate dpr 
+        ON decks.deck_id = dpr.deck_id
 )
 -- PASSED
 -- select * from match_data

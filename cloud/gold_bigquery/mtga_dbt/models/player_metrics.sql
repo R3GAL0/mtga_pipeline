@@ -24,6 +24,7 @@ with deck_usage as (
         mat.player_id,
         count(*) as match_cnt,
         ANY_VALUE(decks.deck_name) AS deck_name
+        -- ROW_NUMBER() OVER (PARTITION BY player_id ORDER BY match_cnt DESC) as deck_freq
 
     FROM {{source('mtga_silver', 'matches')}} mat
 
@@ -31,6 +32,7 @@ with deck_usage as (
         ON mat.deck_id = decks.deck_id
 
     GROUP BY mat.player_id, mat.deck_id
+    -- QUALIFY deck_freq = 1
 
     QUALIFY ROW_NUMBER() OVER (
         PARTITION BY player_id
@@ -137,8 +139,8 @@ source_data as (
         ROUND(SAFE_DIVIDE(md.total_wins, md.total_matches)*100, 2) as win_rate_pct,
         ROUND(SAFE_DIVIDE(md.total_wins_30d, md.matches_30d)*100, 2) as win_rate_30d_pct,
 
-        ROUND(md.avg_duration_sec, 2),
-        ROUND(md.avg_mulligans, 2),
+        ROUND(md.avg_duration_sec, 2) as avg_duration_sec,
+        ROUND(md.avg_mulligans, 2) as avg_mulligans,
 
         ROUND(SAFE_DIVIDE(md.mulligan0Wins, md.mulligan0Count)*100, 2) as mulligan0_win_rate_pct,
         md.mulligan0Count,

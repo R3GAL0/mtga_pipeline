@@ -1,6 +1,6 @@
 ## Objective
 
-This project transforms Magic: The Gathering Arena (MTGA) client log files into a structured format and visual dashboard, enabling players to view statistics such as Win/Loss rates and card performance.
+This project transforms Magic: The Gathering Arena (MTGA) client log files into a structured format and visual [dashboard](https://lookerstudio.google.com/s/u2bBEl4-0Kg), enabling players to view statistics such as Win/Loss rates and card performance.
 
 The ETL Pipeline Diagram is visualized [here](mtga_pipeline_flow.png).
 
