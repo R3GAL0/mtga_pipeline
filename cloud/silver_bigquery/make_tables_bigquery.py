@@ -22,6 +22,7 @@ import os
 from google.cloud import bigquery
 import hashlib
 import datetime
+import gc
 
 
 # def insert_all(data_dir, db_dir):
@@ -44,6 +45,10 @@ def insert_all(data_dir, client):
             insert_player(client, df_part)
             match_id, player_win, deck_id = insert_match(client, df_part)
             insert_turn1_hands(client, df_part, match_id, player_win, deck_id)
+        
+        del df_temp
+        del df
+        gc.collect()
 
 # increments the pk_counter table, returns the incremented PK value
 # used to get the next PK for each table (BigQuery doesnt have autoincrement on PKs)
