@@ -1,5 +1,5 @@
 """
-MTGA Pipeline: Gold Layer
+MTGA Pipeline: Silver Layer
 
 This trims and formats the scryfall database to be used as the dim_cards table. 
 
