@@ -23,16 +23,27 @@ Notes:
 {{ config(materialized='table') }}
 
 with match_data as (
-    SELECT
-        deck_id,
-
+    SELECT 
+        mat.player_id,
+        mat.deck_id, 
         AVG(duration_sec) as avg_duration_sec,
         COUNT(*) as total_matches,
-        COUNTIF(player_seat = winner_seat) as total_wins
+        COUNTIF(player_seat = winner_seat) as total_wins,
+        COUNTIF(player_seat = 1 and winner_seat = 1) as play_win_cnt,
+        COUNTIF(player_seat = 1) as play_game_cnt,
+        COUNTIF(player_seat = 2 and winner_seat = 2) as draw_win_cnt,
+        COUNTIF(player_seat = 2) as draw_game_cnt,
+
+        ANY_VALUE(decks.deck_name) AS deck_name,
+        DENSE_RANK() OVER (PARTITION BY mat.player_id ORDER BY count(*) DESC) as deck_rank
 
     FROM {{source('mtga_silver', 'matches')}} mat
-    
-    GROUP BY deck_id
+
+    LEFT JOIN {{source('mtga_silver', 'decks')}} decks 
+        ON mat.deck_id = decks.deck_id
+
+    GROUP BY mat.player_id, mat.deck_id
+
 ),
 -- Getting the card data from the decks and aggregating
 -- exploding arrays may be inefficient for large numbers of decks -> intruduce another downstream table? (deck_cards)
@@ -164,21 +175,13 @@ mulligan_data as (
     
     GROUP BY decks.deck_id
 ),
-deck_play_rate as (
-    SELECT 
-        mat.deck_id, 
-        mat.player_id,
-        count(*) as match_cnt,
-        ANY_VALUE(decks.deck_name) AS deck_name,
-        DENSE_RANK() OVER (PARTITION BY mat.player_id ORDER BY count(*) DESC) as deck_rank
-
-    FROM {{source('mtga_silver', 'matches')}} mat
-
-    LEFT JOIN {{source('mtga_silver', 'decks')}} decks 
-        ON mat.deck_id = decks.deck_id
-
-    GROUP BY mat.player_id, mat.deck_id
-
+player_wr as (
+    SELECT  
+        player_id,
+        SAFE_DIVIDE(COUNTIF(player_seat = winner_seat), COUNT(*)) AS player_wr
+    
+    FROM {{source('mtga_silver', 'matches')}}
+    GROUP BY player_id
 ),
 -- final calcuations/formatting
 source_data as (
@@ -193,7 +196,37 @@ source_data as (
         ROUND(mat_d.avg_duration_sec, 2) as avg_duration_sec,
         mat_d.total_matches,
         mat_d.total_wins,
+        mat_d.play_game_cnt as total_matches_play,
+        mat_d.draw_game_cnt as total_matches_draw,
+
         ROUND(SAFE_DIVIDE(mat_d.total_wins, mat_d.total_matches)*100, 2) as win_rate_pct,
+        ROUND(SAFE_DIVIDE(mat_d.play_win_cnt, mat_d.play_game_cnt)*100, 2) as win_rate_play,
+        ROUND(SAFE_DIVIDE(mat_d.draw_win_cnt, mat_d.draw_game_cnt)*100, 2) as win_rate_draw,
+        mat_d.deck_rank,
+
+
+        -- power score (k = 50)
+            -- adjusted_wr = (wins+k*global_wr)/(games+k)
+            -- power_score = adjusted_wr * log(games)
+            -- where k = confidence weight (~50-100 games)
+        ROUND(SAFE_DIVIDE( -- adjusted_wr
+                mat_d.total_wins + 50 * pwr.player_wr, 
+                (mat_d.total_matches+50)
+            )*LOG(NULLIF(mat_d.total_matches,0)),2) 
+            as total_power_score,
+
+        ROUND(SAFE_DIVIDE( -- adjusted_wr
+                mat_d.play_win_cnt + 50 * pwr.player_wr, 
+                (mat_d.play_game_cnt+50)
+            )*LOG(NULLIF(mat_d.play_game_cnt,0)),2) 
+            as play_power_score,
+
+        ROUND(SAFE_DIVIDE( -- adjusted_wr
+                mat_d.draw_win_cnt + 50 * pwr.player_wr, 
+                (mat_d.draw_game_cnt+50)
+            )*LOG(NULLIF(mat_d.draw_game_cnt,0)),2) 
+            as draw_power_score,
+
 
         -- mulligan data
         ROUND(md.avg_mulligans, 2) as avg_mulligans,
@@ -224,9 +257,7 @@ source_data as (
         -- cad.cmc_bin_14,
         -- cad.cmc_bin_15,
         -- cad.cmc_bin_16,
-        cad.deck_colors,
-        dpr.match_cnt,
-        dpr.deck_rank
+        cad.deck_colors
 
     FROM {{source('mtga_silver', 'decks')}} decks
 
@@ -242,8 +273,8 @@ source_data as (
     LEFT JOIN card_agg_data cad
         on decks.deck_id = cad.deck_id
 
-    LEFT JOIN deck_play_rate dpr 
-        ON decks.deck_id = dpr.deck_id
+    LEFT JOIN player_wr pwr
+        ON decks.player_id = pwr.player_id
 )
 -- PASSED
 -- select * from match_data

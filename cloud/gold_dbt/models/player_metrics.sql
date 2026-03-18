@@ -83,11 +83,32 @@ init_hands as (
     GROUP BY player_id
 
 ),
+ranked_matches AS (
+    SELECT
+        mat.player_id,
+        mat.winner_seat,
+        mat.player_seat,
+        ROW_NUMBER() OVER(PARTITION BY mat.player_id ORDER BY TIMESTAMP_DIFF(mat.start_time, TIMESTAMP '2025-01-01', SECOND) ASC) AS rn_asc,
+        ROW_NUMBER() OVER(PARTITION BY mat.player_id ORDER BY TIMESTAMP_DIFF(mat.start_time, TIMESTAMP '2025-01-01', SECOND) DESC) AS rn_desc
+    FROM {{source('mtga_silver', 'matches')}}  mat
+),
+first_last_50 as (
+SELECT
+    player_id,
+    COUNTIF(rmat.winner_seat = rmat.player_seat and rn_asc <= 50) AS total_wins_first50,
+    COUNTIF(rmat.winner_seat = rmat.player_seat and rn_desc <= 50) AS total_wins_last50
+FROM ranked_matches rmat
+GROUP BY player_id
+),
 match_data as (
     SELECT
         mat.player_id,
         count(*) as total_matches,
-        COUNTIF(mat.winner_seat = mat.player_seat)AS total_wins,
+        COUNTIF(mat.winner_seat = mat.player_seat) AS total_wins,
+        COUNTIF(mat.player_seat = 1) AS total_matches_play,
+        COUNTIF(mat.player_seat = 2) AS total_matches_draw,
+        COUNTIF(mat.winner_seat = 1 and mat.player_seat = 1)AS total_wins_play,
+        COUNTIF(mat.winner_seat = 2 and mat.player_seat = 2)AS total_wins_draw,
 
         -- rolling matches 30d
         MAX(mat_win.matches_30d) as matches_30d,
@@ -138,16 +159,23 @@ source_data as (
         md.total_matches - md.total_wins as total_losses,
         ROUND(SAFE_DIVIDE(md.total_wins, md.total_matches)*100, 2) as win_rate_pct,
         ROUND(SAFE_DIVIDE(md.total_wins_30d, md.matches_30d)*100, 2) as win_rate_30d_pct,
+        ROUND(SAFE_DIVIDE(md.total_wins_play, md.total_matches_play)*100, 2) as win_rate_play,
+        ROUND(SAFE_DIVIDE(md.total_wins_draw, md.total_matches_draw)*100, 2) as win_rate_draw,
+
+        ROUND(flf.total_wins_first50 / 50, 2) as first_50_wr,
+        ROUND(flf.total_wins_last50 / 50, 2) as last_50_wr,
+        ROUND(SAFE_DIVIDE(flf.total_wins_last50 - total_wins_first50, 2), 2)as wr_improvement,
 
         ROUND(md.avg_duration_sec, 2) as avg_duration_sec,
         ROUND(md.avg_mulligans, 2) as avg_mulligans,
 
-        ROUND(SAFE_DIVIDE(md.mulligan0Wins, md.mulligan0Count)*100, 2) as mulligan0_win_rate_pct,
-        md.mulligan0Count,
-        ROUND(SAFE_DIVIDE(md.mulligan1Wins, md.mulligan1Count)*100, 2) as mulligan1_win_rate_pct,
-        md.mulligan1Count,
-        ROUND(SAFE_DIVIDE(md.mulligan2Wins, md.mulligan2Count)*100, 2) as mulligan2_win_rate_pct,
-        md.mulligan2Count,
+        -- this work is done inside mulligan_metrics.sql now
+        -- ROUND(SAFE_DIVIDE(md.mulligan0Wins, md.mulligan0Count)*100, 2) as mulligan0_win_rate_pct,
+        -- md.mulligan0Count,
+        -- ROUND(SAFE_DIVIDE(md.mulligan1Wins, md.mulligan1Count)*100, 2) as mulligan1_win_rate_pct,
+        -- md.mulligan1Count,
+        -- ROUND(SAFE_DIVIDE(md.mulligan2Wins, md.mulligan2Count)*100, 2) as mulligan2_win_rate_pct,
+        -- md.mulligan2Count,
 
         md.most_played_deck_id,
         md.most_played_deck_name,
@@ -158,6 +186,9 @@ source_data as (
 
     LEFT JOIN {{source('mtga_silver', 'players')}} pl
         ON md.player_id = pl.player_id
+
+    LEFT JOIN first_last_50 flf
+        ON md.player_id = flf.player_id
 )
 
 select *
