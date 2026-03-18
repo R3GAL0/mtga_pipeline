@@ -11,6 +11,15 @@ The gold layer is built using dbt, with models available [here](/mtga_pipeline/c
 - The silver layer is fully normalized and represents atomic game events.
 - The gold layer denormalizes data into analytics-ready tables for dashboard consumption.
 
+
+### Why This Project Is Interesting
+
+- Parses semi-structured game client logs into structured relational models
+- Handles deeply nested JSON payloads from live game events
+- Pulls data from APIs for reference analysis
+- Migrates from local DuckDB development to production BigQuery
+- Demonstrates layered data architecture (Bronze → Silver → Gold)
+
 ## Mulligans in Magic the Gathering
 
 Magic uses the London Mulligan system.
@@ -44,13 +53,29 @@ These insights help players:
 - Replace consistently underperforming cards
 
 
-## Why This Project Is Interesting
+## Tech Stack
 
-- Parses semi-structured game client logs into structured relational models
-- Handles deeply nested JSON payloads from live game events
-- Pulls data from APIs for reference analysis
-- Migrates from local DuckDB development to production BigQuery
-- Demonstrates layered data architecture (Bronze → Silver → Gold)
+- Python 
+- Pandas
+- DuckDB
+- Google Cloud Platform (GCP)
+- BigQuery
+- Docker
+- Data Build Tool (dbt)
+- Looker Studio
+
+## Architecture Overview
+
+| Layer                | Technology/Process                         |
+| -------------------- | ------------------------------------------ |
+| **Ingestion**        | Shell script captures MTGA log files       |
+| **Processing**       | Python + Pandas parses and transforms logs |
+| **Landing Storage**  | GCP Bucket (cloud)                         |
+| **ETL to Silver**    | Docker image deployed on GCP  / Locally with DuckDB  |
+| **ETL to Gold**      | dbt aggregations on GCP into analyitics ready tables        |
+| **Analysis**         | Looker Studio dashboard        |
+
+
 
 ## Process walkthrough
 
@@ -80,31 +105,8 @@ Following the [Pipeline Diagram](mtga_pipeline_flow.png).
 ### Gold Layer Transform (Cloud)
 - A dbt process is executed [here](/mtga_pipeline/cloud/gold_dbt/). (Can be schedueled on a weekly/daily/hourly basis.)
     - Using the silver layer tables it aggregates the results into materialized tables
-    - These tables are then ingested by the [dashboard](https://lookerstudio.google.com/s/kQwxZ_kW-hs)
+    - These tables are then ingested by the Looker Studio [dashboard](https://lookerstudio.google.com/s/kQwxZ_kW-hs)
 
-## Architecture Overview
-
-| Layer                | Technology/Process                         |
-| -------------------- | ------------------------------------------ |
-| **Ingestion**        | Shell script captures MTGA log files       |
-| **Processing**       | Python + Pandas parses and transforms logs |
-| **Landing Storage**  | GCP Bucket (cloud)                         |
-| **ETL to Silver**    | Docker image deployed on GCP  / Locally with DuckDB  |
-| **ETL to Gold**      | dbt aggregations on GCP into analyitics ready tables        |
-| **Analysis**         | Looker Studio dashboard        |
-
-
-
-## Tech Stack
-
-- Python 
-- Pandas
-- DuckDB
-- Google Cloud Platform (GCP)
-- BigQuery
-- Docker
-- Data Build Tool (dbt)
-- Looker Studio
 
 ## Transformation / Ingestion Logic
 
@@ -166,16 +168,16 @@ Win Rates:
 - win_rate_draw: The win rate when the player goes second (is on the draw).
 - opener_win_rate: The win rate for each card in the deck when it is in the opening hand.
 
-Power Score:
+Power Score (Bayseian smoothing, k = 50):
 
-        power score (k = 50)
-            adjusted_wr = (wins+k*global_wr)/(games+k)
-            power_score = adjusted_wr * log(games)
-            where k = confidence weight (~50-100 games)
-- total_power_score
-- play_power_score
-- draw_power_score
-- card_power_score: Power score of each card in the deck against the deck win rate. (Only for opening hand)
+    power_score = adjusted_wr * log(10+games)
+    adjusted_wr = (wins+k*global_wr)/(games+k)
+
+    where k = confidence weight (~50-100 games)
+- total_power_score: Power score of the deck, using the player win rate as the global_wr
+- play_power_score: Power score of the deck during 'on play' games (player goes first), using the deck win rate as the global_wr
+- draw_power_score: Power score of the deck during 'on draw' games (player goes second), using the deck win rate as the global_wr
+- card_oh_power_score: Power score of each card in the deck, using the deck win rate as the global_wr. (Only for opening hand win rates)
 
 Other:
 - avg_mulligans: The average number of mulligans taken by the player per game

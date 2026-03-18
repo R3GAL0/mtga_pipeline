@@ -212,19 +212,19 @@ source_data as (
         ROUND(SAFE_DIVIDE( -- adjusted_wr
                 mat_d.total_wins + 50 * pwr.player_wr, 
                 (mat_d.total_matches+50)
-            )*LOG(NULLIF(mat_d.total_matches,0)),2) 
+            )*LOG(10 + mat_d.total_matches),2) 
             as total_power_score,
 
         ROUND(SAFE_DIVIDE( -- adjusted_wr
                 mat_d.play_win_cnt + 50 * pwr.player_wr, 
                 (mat_d.play_game_cnt+50)
-            )*LOG(NULLIF(mat_d.play_game_cnt,0)),2) 
+            )*LOG(10 + mat_d.total_matches),2) 
             as play_power_score,
 
         ROUND(SAFE_DIVIDE( -- adjusted_wr
                 mat_d.draw_win_cnt + 50 * pwr.player_wr, 
                 (mat_d.draw_game_cnt+50)
-            )*LOG(NULLIF(mat_d.draw_game_cnt,0)),2) 
+            )*LOG(10 + mat_d.total_matches),2) 
             as draw_power_score,
 
 
