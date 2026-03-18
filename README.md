@@ -1,15 +1,48 @@
 ## Objective
 
-This project transforms Magic: The Gathering Arena (MTGA) client log files into a structured format and visual [dashboard](https://lookerstudio.google.com/s/kQwxZ_kW-hs), enabling players to view statistics such as Win/Loss rates and card performance on a per deck level.
+This project transforms Magic: The Gathering Arena (MTGA) client log files into structured, analytics-ready data and a visual [dashboard](https://lookerstudio.google.com/s/kQwxZ_kW-hs), enabling players to evaluate win rates, deck performance, and opening hand strength for better mulligan decisions.
 
-The ETL Pipeline Diagram is visualized [here](mtga_pipeline_flow.png).
+The ETL Pipeline is visualized [here](mtga_pipeline_flow.png).
 
-The silver-layer schema is defined locally for [DuckDB](/mtga_pipeline/cloud/silver_duckdb_schema.sql) and in the cloud for [BigQuery](/mtga_pipeline/cloud/silver_schema_bigquery.sql). It is visualized here [ERD](erd_silver.png) (note: the visualization is outdated, column names and types are not accurate). The cloud version is deployed with Docker containers.
+The silver-layer schema is defined locally for [DuckDB](/mtga_pipeline/cloud/silver_duckdb_schema.sql) and in the cloud for [BigQuery](/mtga_pipeline/cloud/silver_schema_bigquery.sql), with an accompanying [ERD](erd_silver.png) (note: the visualization is outdated). The cloud pipeline is deployed with Docker containers.
 
-The gold-layer tables are made with Data Build Tool (dbt), found [here](/mtga_pipeline/cloud/gold_dbt/models/). A rough version of the schema is [here](/mtga_pipeline/cloud/gold_dbt/gold_schema_bigquery.sql)
+The gold layer is built using dbt, with models available [here](/mtga_pipeline/cloud/gold_dbt/models/) and a schema reference [here](/mtga_pipeline/cloud/gold_dbt/gold_schema_bigquery.sql).
 
-The silver layer is fully normalized and designed to represent atomic game events.
-The gold layer denormalizes the data into analytics-ready tables for dashboard consumption.
+- The silver layer is fully normalized and represents atomic game events.
+- The gold layer denormalizes data into analytics-ready tables for dashboard consumption.
+
+## Mulligans in Magic the Gathering
+
+Magic uses the London Mulligan system.
+
+At the start of each game, players draw 7 cards. They may choose to keep or mulligan their hand. If a player mulligans, they shuffle their hand back into their deck and draw a new 7 cards. After deciding to keep, they must place a number of cards equal to their mulligans on the bottom of their deck.
+
+For example:
+
+- 1 mulligan → keep 7, then bottom 1 card (play with 6)
+- 2 mulligans → keep 7, then bottom 2 cards (play with 5)
+
+While this system improves hand consistency, mulligans still carry a significant cost. In practice, even a single mulligan can reduce win rate by ~20%, with additional mulligans compounding the disadvantage.
+
+This is largely explained by card advantage—starting with fewer cards reduces the number of options available to a player, limiting flexibility and decision-making.
+
+### Why it matters
+
+A key goal for players is to minimize mulligans while still avoiding weak opening hands. This creates a trade-off:
+
+- Keep a suboptimal hand → risk poor performance
+- Mulligan → guaranteed resource disadvantage
+
+The metrics in this project aim to quantify that trade-off by:
+- Measuring win rates by mulligan count
+- Evaluating opening hand strength
+- Identifying which cards contribute most to keepable hands
+
+These insights help players:
+- Make more informed mulligan decisions
+- Optimize deck composition
+- Replace consistently underperforming cards
+
 
 ## Why This Project Is Interesting
 
@@ -107,7 +140,50 @@ match_start_pattern = re.compile(
 - **Most Played Deck:** Aggregated matches by deck per player and selected the deck with the highest match count using ROW_NUMBER().
 - **Aggregations:** Computed total matches, wins, losses, average match duration, and mulligan win rates for each player.
  
+## Metrics
 
+### Player Level
+All player level metrics include all the player games and decks on record
+
+Win Rates:
+- win_rate_pct: The win rate (number of wins / total number of games).
+- win_rate_30d_pct: The win rate for the last 30 days.
+- win_rate_play: The win rate when the player goes first (is on the play).
+- win_rate_draw: The win rate when the player goes second (is on the draw).
+- first_50_wr: The win rate for the first 50 games recorded for the player.
+- last_50_wr: The win rate for the last 50 games recorded for the player.
+- wr_improvement: The improved win rate of the player over time (last_50_wr - first_50_wr).
+
+Other:
+- avg_mulligans: The average number of mulligans taken by the player per game
+- avg_duration_sec: The average match duration, over all games and decks.
+
+### Deck Level
+
+Win Rates:
+- win_rate_pct: The win rate (number of wins / total number of games).
+- win_rate_play: The win rate when the player goes first (is on the play).
+- win_rate_draw: The win rate when the player goes second (is on the draw).
+- opener_win_rate: The win rate for each card in the deck when it is in the opening hand.
+
+Power Score:
+
+        power score (k = 50)
+            adjusted_wr = (wins+k*global_wr)/(games+k)
+            power_score = adjusted_wr * log(games)
+            where k = confidence weight (~50-100 games)
+- total_power_score
+- play_power_score
+- draw_power_score
+- card_power_score: Power score of each card in the deck against the deck win rate. (Only for opening hand)
+
+Other:
+- avg_mulligans: The average number of mulligans taken by the player per game
+- avg_duration_sec: The average match duration, over all games and decks.
+
+### Card Level
+
+To be added later
  
 
 ## Development Stages
