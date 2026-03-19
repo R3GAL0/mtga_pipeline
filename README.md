@@ -2,9 +2,9 @@
 
 This project transforms Magic: The Gathering Arena (MTGA) client log files into structured, analytics-ready data and a visual [dashboard](https://lookerstudio.google.com/s/kQwxZ_kW-hs), enabling players to evaluate win rates, deck performance, and opening hand strength for better mulligan decisions.
 
-The ETL Pipeline is visualized [here](mtga_pipeline_flow.png).
+The ETL Pipeline is visualized [here](/mtga_pipeline/mtga_pipeline_flow.png).
 
-The silver-layer schema is defined locally for [DuckDB](/mtga_pipeline/cloud/silver_duckdb_schema.sql) and in the cloud for [BigQuery](/mtga_pipeline/cloud/silver_schema_bigquery.sql), with an accompanying [ERD](erd_silver.png) (note: the visualization is outdated). The cloud pipeline is deployed with Docker containers.
+The silver-layer schema is defined locally for [DuckDB](/mtga_pipeline/cloud/silver_duckdb_schema.sql) and in the cloud for [BigQuery](/mtga_pipeline/cloud/silver_schema_bigquery.sql), with an accompanying [ERD](/mtga_pipeline/erd_silver.png) (note: the visualization is outdated). The cloud pipeline is deployed with Docker containers.
 
 The gold layer is built using dbt, with models available [here](/mtga_pipeline/cloud/gold_dbt/models/) and a schema reference [here](/mtga_pipeline/cloud/gold_dbt/gold_schema_bigquery.sql).
 
@@ -79,7 +79,7 @@ These insights help players:
 
 ## Process walkthrough
 
-Following the [Pipeline Diagram](mtga_pipeline_flow.png). 
+Following the [Pipeline Diagram](/mtga_pipeline/mtga_pipeline_flow.png). 
 
 ### Log Capture
 - A player plays MTGA, generating a log file. 
@@ -190,7 +190,7 @@ To be added later
 
 ## Development Stages
 
-How the pipeline was built step-by-step ([Pipeline Diagram](mtga_pipeline_flow.png)). 
+How the pipeline was built step-by-step ([Pipeline Diagram](/mtga_pipeline/mtga_pipeline_flow.png)). 
 
 
 - capture_data.sh: Make a quick shell script to capture game data while the rest of the pipeline is built
