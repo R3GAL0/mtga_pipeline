@@ -4,7 +4,7 @@ This project transforms Magic: The Gathering Arena (MTGA) client log files into 
 
 The ETL Pipeline is visualized [here](mtga_pipeline_flow.png).
 
-The silver-layer schema is defined locally for [DuckDB](cloud/silver_duckdb_schema.sql) and in the cloud for [BigQuery](cloud/silver_schema_bigquery.sql), with an accompanying [ERD](erd_silver.png) (note: the visualization is outdated). The cloud pipeline is deployed with Docker containers.
+The silver-layer schema is defined locally for [DuckDB](cloud/silver_duckdb/silver_duckdb_schema.sql) and in the cloud for [BigQuery](cloud/silver_bigquery/silver_schema_bigquery.sql), with an accompanying [ERD](erd_silver.png) (note: the visualization is outdated). The cloud pipeline is deployed with Docker containers.
 
 The gold layer is built using dbt, with models available [here](cloud/gold_dbt/models/) and a schema reference [here](cloud/gold_dbt/gold_schema_bigquery.sql).
 
@@ -90,7 +90,7 @@ Following the [Pipeline Diagram](mtga_pipeline_flow.png).
 - Game data payloads are extracted and saved as CSV files.
 
 ### ETL to Silver Layer (Local)
-- Using [make_tables.py](cloud/make_tables.py), CSVs are loaded, transformed, and inserted into the [silver table schema](cloud/silver_duckdb_schema.sql).
+- Using [make_tables.py](cloud/silver_duckdb/make_tables_duckdb.py), CSVs are loaded, transformed, and inserted into the [silver table schema](cloud/silver_duckdb/silver_duckdb_schema.sql).
 
 
 ### ETL to Silver Layer (Cloud)
