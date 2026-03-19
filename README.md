@@ -2,11 +2,11 @@
 
 This project transforms Magic: The Gathering Arena (MTGA) client log files into structured, analytics-ready data and a visual [dashboard](https://lookerstudio.google.com/s/kQwxZ_kW-hs), enabling players to evaluate win rates, deck performance, and opening hand strength for better mulligan decisions.
 
-The ETL Pipeline is visualized [here](mtga_pipeline/mtga_pipeline_flow.png).
+The ETL Pipeline is visualized [here](mtga_pipeline_flow.png).
 
-The silver-layer schema is defined locally for [DuckDB](mtga_pipeline/cloud/silver_duckdb_schema.sql) and in the cloud for [BigQuery](mtga_pipeline/cloud/silver_schema_bigquery.sql), with an accompanying [ERD](mtga_pipeline/erd_silver.png) (note: the visualization is outdated). The cloud pipeline is deployed with Docker containers.
+The silver-layer schema is defined locally for [DuckDB](cloud/silver_duckdb_schema.sql) and in the cloud for [BigQuery](cloud/silver_schema_bigquery.sql), with an accompanying [ERD](erd_silver.png) (note: the visualization is outdated). The cloud pipeline is deployed with Docker containers.
 
-The gold layer is built using dbt, with models available [here](mtga_pipeline/cloud/gold_dbt/models/) and a schema reference [here](mtga_pipeline/cloud/gold_dbt/gold_schema_bigquery.sql).
+The gold layer is built using dbt, with models available [here](cloud/gold_dbt/models/) and a schema reference [here](cloud/gold_dbt/gold_schema_bigquery.sql).
 
 - The silver layer is fully normalized and represents atomic game events.
 - The gold layer denormalizes data into analytics-ready tables for dashboard consumption.
@@ -79,23 +79,23 @@ These insights help players:
 
 ## Process walkthrough
 
-Following the [Pipeline Diagram](mtga_pipeline/mtga_pipeline_flow.png). 
+Following the [Pipeline Diagram](mtga_pipeline_flow.png). 
 
 ### Log Capture
 - A player plays MTGA, generating a log file. 
-- Logs are captured via the shell script [capture_data.sh](mtga_pipeline/local/capture_data.sh). 
+- Logs are captured via the shell script [capture_data.sh](local/capture_data.sh). 
 
 ### Parsing (Bronze Layer)
-- Logs are parsed using [python_parser.py](mtga_pipeline/local/python_parser.py).
+- Logs are parsed using [python_parser.py](local/python_parser.py).
 - Game data payloads are extracted and saved as CSV files.
 
 ### ETL to Silver Layer (Local)
-- Using [make_tables.py](mtga_pipeline/cloud/make_tables.py), CSVs are loaded, transformed, and inserted into the [silver table schema](mtga_pipeline/cloud/silver_duckdb_schema.sql).
+- Using [make_tables.py](cloud/make_tables.py), CSVs are loaded, transformed, and inserted into the [silver table schema](cloud/silver_duckdb_schema.sql).
 
 
 ### ETL to Silver Layer (Cloud)
 - CSVs are loaded into a GCP bucket
-- A Docker container is executed [here](mtga_pipeline/cloud/silver_bigquery/). (Can be schedueled on an upload event.)
+- A Docker container is executed [here](cloud/silver_bigquery/). (Can be schedueled on an upload event.)
     - It extracts the list of CSVs to process
     - Moves those CSVs to /tmp/data for processing
     - Transforms/inserts the data into BigQuery tables
@@ -103,7 +103,7 @@ Following the [Pipeline Diagram](mtga_pipeline/mtga_pipeline_flow.png).
     - Performs a cleanup on the memory
 
 ### Gold Layer Transform (Cloud)
-- A dbt process is executed [here](mtga_pipeline/cloud/gold_dbt/). (Can be schedueled on a weekly/daily/hourly basis.)
+- A dbt process is executed [here](cloud/gold_dbt/). (Can be schedueled on a weekly/daily/hourly basis.)
     - Using the silver layer tables it aggregates the results into materialized tables
     - These tables are then ingested by the Looker Studio [dashboard](https://lookerstudio.google.com/s/kQwxZ_kW-hs)
 
@@ -190,7 +190,7 @@ To be added later
 
 ## Development Stages
 
-How the pipeline was built step-by-step ([Pipeline Diagram](mtga_pipeline/mtga_pipeline_flow.png)). 
+How the pipeline was built step-by-step ([Pipeline Diagram](mtga_pipeline_flow.png)). 
 
 
 - capture_data.sh: Make a quick shell script to capture game data while the rest of the pipeline is built
