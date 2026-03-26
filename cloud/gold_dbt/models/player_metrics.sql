@@ -1,5 +1,5 @@
 
-/*
+"""
 Gold layer: player summary
 
 Grain:
@@ -13,7 +13,7 @@ Derived Metrics:    (per player)
 
 Notes:
     Rolling match statistics are calculated using window functions
-*/
+"""
 
 {{ config(materialized='table') }}
 

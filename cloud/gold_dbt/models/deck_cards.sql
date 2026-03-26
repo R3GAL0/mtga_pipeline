@@ -1,5 +1,4 @@
-
-/*
+"""
 Gold layer: deck card summary
 
 Grain:
@@ -9,8 +8,7 @@ Derived metrics:    (per deck)
 
 
 Notes:
-
-*/
+"""
 
 {{ config(materialized='table') }}
 

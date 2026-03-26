@@ -1,5 +1,5 @@
 
-/*
+"""
 Gold layer: card_opener_stats
 
 Grain:
@@ -20,7 +20,7 @@ Notes:
 Possible expansion:
     Add card draws over the game and measure card impact on the game as a function of time of draw
 
-*/
+"""
 
 {{ config(materialized='table') }}
 

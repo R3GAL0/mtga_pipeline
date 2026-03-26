@@ -1,5 +1,5 @@
 
-/*
+"""
 Gold layer: player win rate, broken up by 7 day periods
 
 Grain:
@@ -8,7 +8,7 @@ Grain:
 Derived Metrics:    (per player)
 
 Notes:
-*/
+"""
 
 {{ config(materialized='table') }}
 
