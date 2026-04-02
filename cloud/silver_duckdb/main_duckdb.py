@@ -1,4 +1,8 @@
-# Currently reprocesses all csvs, will need to change later
+"""
+This was used to dockerize the make_tables_duckdb.py as a cloud run job;
+during migration to GCP bucket storage, prior to BigQuery implementation.
+
+"""
 
 import os
 from make_tables import insert_all

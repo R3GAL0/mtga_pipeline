@@ -44,7 +44,8 @@ def insert_all(data_dir, client):
         for game_num, df_part in df.groupby('game_num'):
             insert_player(client, df_part)
             match_id, player_win, deck_id = insert_match(client, df_part)
-            insert_turn1_hands(client, df_part, match_id, player_win, deck_id)
+            seatID = insert_turn1_hands(client, df_part, match_id, player_win, deck_id)
+            insert_draws_plays (client, df_part, match_id, deck_id, seatID)
         
         del df_temp
         del df
@@ -197,39 +198,67 @@ def insert_player (client, df):
         print("Players insert errors: " + str(errors))
 
 
+## Below are used with insert_turn1_hands and insert_draw_play
+
+# used to pull out the player hand objects from the nested payload
+def has_hand_zone(payload_line):
+    if not isinstance(payload_line, dict):
+        print("payload_line is not a dict: " + str(type(payload_line)))
+        print(payload_line)
+        return False
+
+    if payload_line.get('type') != 'GREMessageType_GameStateMessage':
+        return False
+
+    gsm = payload_line.get('gameStateMessage')
+    if not gsm:
+        return False
+
+    return any(
+        z.get('type') == 'ZoneType_Hand'
+        for z in gsm.get('zones', [])
+    )
+
+# getting instanceId to grpid mapping for creating mapping dict
+def get_game_obj (payload_line):
+    if not isinstance(payload_line, dict):
+        print("get_game_obj is not a dict: " + str(type(payload_line)))
+        print(payload_line)
+        return
+
+    game_state = payload_line.get('gameStateMessage')
+    if not game_state:
+        return
+
+    game_objects = game_state.get('gameObjects')
+    if not game_objects:
+        return
+
+    gameObjectMap = {}
+    for sub_item in game_objects:
+        gameObjectMap[sub_item.get('instanceId')] = sub_item.get('grpId')
+    return gameObjectMap
+
+# detects the final hand/begining of the actual play phase
+def is_beginning_phase(payload_line):
+    if str(type(payload_line)) != "<class 'dict'>":
+        return False
+    if payload_line.get('type') != 'GREMessageType_GameStateMessage':
+        return False
+    
+    gsm = payload_line.get('gameStateMessage')
+    if not gsm:
+        return False
+    
+    turn = gsm.get('turnInfo')
+    if not turn:
+        return False
+    
+    return turn.get('phase') == 'Phase_Beginning'
+
 # it will insert all the hands for the game with unique hand_ids
 def insert_turn1_hands(client, df, match_id, player_win, deck_id):
 
-    # used to pull out the player hand objects from the nested payload
-    def has_hand_zone(payload_line):
-        if payload_line.get('type') != 'GREMessageType_GameStateMessage':
-            return False
-
-        gsm = payload_line.get('gameStateMessage')
-        if not gsm:
-            return False
-
-        return any(
-            z.get('type') == 'ZoneType_Hand'
-            for z in gsm.get('zones', [])
-        )
-
-    # detects the final hand/begining of the actual play phase
-    def is_beginning_phase(payload_line):
-        if str(type(payload_line)) != "<class 'dict'>":
-            return False
-        if payload_line.get('type') != 'GREMessageType_GameStateMessage':
-            return False
-        
-        gsm = payload_line.get('gameStateMessage')
-        if not gsm:
-            return False
-        
-        turn = gsm.get('turnInfo')
-        if not turn:
-            return False
-        
-        return turn.get('phase') == 'Phase_Beginning'
 
     # slicing the df to get the initial hand payloads
     beginning_idx = df[df['payload'].apply(is_beginning_phase)].index.min()
@@ -242,17 +271,25 @@ def insert_turn1_hands(client, df, match_id, player_win, deck_id):
 
     #   Making a mapping variable to map instanceId of a card to its grpId (arena_id)
     gameObjectMap = {}
-    for item in df_hands['payload']:
-        game_state = item.get('gameStateMessage')
-        if not game_state:
-            continue
+    df_gom = df['payload'].apply(get_game_obj)
+    df_gom = df_gom.dropna(how='all')
+    # df_test
 
-        game_objects = game_state.get('gameObjects')
-        if not game_objects:
-            continue
+    gameObjectMap = {}
+    for item in df_gom:
+        gameObjectMap.update(item)
 
-        for sub_item in game_objects:
-            gameObjectMap[sub_item.get('instanceId')] = sub_item.get('grpId')
+    # for item in df_hands['payload']:
+    #     game_state = item.get('gameStateMessage')
+    #     if not game_state:
+    #         continue
+
+    #     game_objects = game_state.get('gameObjects')
+    #     if not game_objects:
+    #         continue
+
+    #     for sub_item in game_objects:
+    #         gameObjectMap[sub_item.get('instanceId')] = sub_item.get('grpId')
 
 
     #   Puting the contents of the hands into separate columns for easy indexing
@@ -362,7 +399,147 @@ def insert_turn1_hands(client, df, match_id, player_win, deck_id):
     errors = client.insert_rows_json("mtgapipeline.mtga_silver.turn1_hands", hands_dict)
     if errors:
         print("T1 hands insert errors: " + str(errors))
+    return seatID
 
+# inserting the card drawn and played per turn into the draw_play table
+def insert_draws_plays (client, df, match_id, deck_id, seatID):
+
+    UNKNOWN_CARD_ID = -1
+    player_id = df.iloc[0]['player_id']
+
+    # slicing the df to get the initial hand payloads
+    beginning_idx = df[df['payload'].apply(is_beginning_phase)].index.min()
+    df = df.iloc[beginning_idx:].copy()
+
+    # grabbing some useful vars
+    # seatID = df['payload'].iloc[1].get('systemSeatIds')[0]
+    # player_id = df.iloc[0]['player_id']
+    #   grabbing some useful values, will be used when writing to the table
+    # seats = df['payload'].iloc[0].get('systemSeatIds')
+    # seatID = seats[0]
+    # print('seats: ' + str(seats))
+
+    # making the gameObjectMapping var
+    df_gom = df['payload'].apply(get_game_obj)
+    df_gom = df_gom.dropna(how='all')
+
+    gameObjectMap = {}
+    for item in df_gom:
+        gameObjectMap.update(item)
+
+    # setting zone by player seat
+    if seatID == 1: 
+        zone = 31 
+    elif seatID == 2:
+        zone = 35
+
+    # getting only rows with a hand zone (there will be many rows per turn)
+    df['hand_zone'] = df['payload'].apply(has_hand_zone)
+    df_temp = df[df['hand_zone']].copy()
+
+    # accounting for games where either player left before match started
+    if len(df_temp) < 2:
+        hands_dict = [{
+            'turn_id': str(match_id) + '_' + str(0),
+            'match_id': match_id,
+            'turn_num': 0,
+
+            'player_id': player_id,
+            'deck_id': deck_id,
+
+            'cards_drawn': [],
+            'cards_played': []
+        }]
+        errors = client.insert_rows_json("mtgapipeline.mtga_silver.play_draw", hands_dict)
+        if errors:
+            print("play_draw insert errors: " + str(errors))
+        return
+
+    # zones is guaranteed to exist for all items in payload
+    print('df \n')
+    print(df.iloc[0])
+    print('df_temp \n')
+    print(df_temp.iloc[0])
+
+    df_temp['phase'] = df_temp['payload'].apply(lambda x: x.get('gameStateMessage', {}).get('turnInfo', {}).get('phase') if type(x) == dict else None)
+
+    df_temp['turn_raw'] = df_temp['payload'].apply(
+        lambda x: x.get('gameStateMessage').get('turnInfo', {}).get('turnNumber', pd.NA)
+    )
+    df_temp['turn'] = (
+        df_temp['turn_raw']
+        .ffill()             
+        .fillna(1)           
+        .astype(int)
+    )
+    df_temp['hz'] = df_temp['payload'].apply(
+        lambda x: next(
+            (
+            item.get('objectInstanceIds') 
+            for item in x.get('gameStateMessage').get('zones') 
+            if item.get('zoneId') == zone
+            ),
+        None 
+        ) 
+    )
+
+    # reformatting df to only have 1 row per turn, 
+    # making columns for hand at start of turn, end of turn, and prev turn final hand
+    df_tt = df_temp[['hz', 'turn']].copy()
+    df_tt['hz_first'] = df_temp[['hz', 'turn']].groupby('turn').transform('first')
+    df_tt['hz_last'] = df_temp[['hz', 'turn']].groupby('turn').transform('last')
+
+    # # map grpid to arena_id
+    df_tt['hz_first'] = df_tt['hz_first'].apply(
+        lambda x: [gameObjectMap.get(item, UNKNOWN_CARD_ID) for item in x] if isinstance(x, list) else []
+    )
+    df_tt['hz_last'] = df_tt['hz_last'].apply(
+        lambda x: [gameObjectMap.get(item, UNKNOWN_CARD_ID) for item in x] if isinstance(x, list) else []
+    )
+    df_tt['hz_last_last'] = df_tt['hz_last'].ffill().shift(1)
+    
+    # 
+    df_tt.drop('hz', axis=1, inplace=True)
+    df_tt.drop_duplicates(subset=['turn'], inplace=True)
+
+    # from prev columns now getting cards played and drawn per turn
+    # played = first - last hands of same turn
+    df_tt['hz_played'] = df_tt.apply(
+        lambda x: [
+            item for item in x['hz_first'] if item not in x['hz_last']
+            ] if isinstance(x['hz_first'], list) and isinstance(x['hz_last'], list) else []
+            , axis=1
+    )
+    # drawn = start of turn hand - last turn hand
+    # has an issue with card draw effects executed durinmg the player's turn
+    df_tt['hz_drawn'] = df_tt.apply(
+        lambda x: [
+            item for item in x['hz_first'] if item not in x['hz_last_last']
+            ] if isinstance(x['hz_first'], list) and isinstance(x['hz_last_last'], list) else x['hz_first']
+            , axis=1
+    )
+
+    # export to table: match_id, turn_num, (played, drawn) based on player seat
+
+    #   Formatting the hands_dict for writting to disk
+    hands_dict = []
+    for index, row in df_tt.iterrows():
+
+        hands_dict.append({
+            'turn_id': str(match_id) + '_' + str(row['turn']),
+            'match_id': match_id,
+            'turn_num': row['turn'],
+
+            'player_id': player_id,
+            'deck_id': deck_id,
+
+            'cards_drawn': row['hz_played'],
+            'cards_played': row['hz_drawn']
+        })
+
+    errors = client.insert_rows_json("mtgapipeline.mtga_silver.play_draw", hands_dict)
+    if errors:
+        print("play_draw insert errors: " + str(errors))
 
 # inserts a match into the db
 # returns a match_id for the match

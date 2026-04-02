@@ -1,5 +1,4 @@
-
-/*
+"""
 Gold layer: deck summary
 
 Grain:
@@ -18,7 +17,7 @@ Notes:
     Cards not found in dim_card table will have null cmc values and be 
     excluded from cmc calcs (ie cmc_avg and cmc_curve).
     cmc_avg excludes lands (0 mana cards) and null (cards not found)
-*/
+"""
 
 {{ config(materialized='table') }}
 

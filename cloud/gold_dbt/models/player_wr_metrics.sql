@@ -1,14 +1,17 @@
 
-/*
+"""
 Gold layer: player win rate, broken up by 7 day periods
 
 Grain:
     player_id
 
 Derived Metrics:    (per player)
+    - week start
+    - win count 7d
+    - game count 7d
 
 Notes:
-*/
+"""
 
 {{ config(materialized='table') }}
 

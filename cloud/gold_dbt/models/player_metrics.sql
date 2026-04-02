@@ -1,19 +1,21 @@
 
-/*
+"""
 Gold layer: player summary
 
 Grain:
     player_id
 
 Derived Metrics:    (per player)
-    - Match performance metrics
-    - Rolling 30-day activity and win rate
-    - Mulligan behavior statistics
+    - win rate (global, as first player/play, as second player/draw)
+    - Rolling 30-day  win rate
+    - win rate improvement (last 50 games win rate - first 50 games win rate)
     - Most frequently played deck
+    - average match duration
+    - average mulligans
 
 Notes:
     Rolling match statistics are calculated using window functions
-*/
+"""
 
 {{ config(materialized='table') }}
 

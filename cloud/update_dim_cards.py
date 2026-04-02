@@ -1,6 +1,3 @@
-# Some of the cards don't have an associated arena_id in the scryfall database but they are used in decks
-# This program inserts known cards into the dim_cards table to help fill some gaps
-
 """
 MTGA Pipeline: Silver Layer
 
@@ -72,7 +69,6 @@ from dotenv import load_dotenv
 load_dotenv('/home/r3gal/develop/mtga_pipeline/.env')
 
 input_path = "/home/r3gal/develop/mtga_pipeline/data/references"
-# output_path_file = "/home/r3gal/develop/mtga_pipeline/data/references/dim_cards.csv"
 
 card_list = []
 
@@ -131,17 +127,7 @@ with open(f'{input_path}/default-cards-20260312090730.json', 'rb') as f:
 client = bigquery.Client()
 table_id = 'mtgapipeline.mtga_silver.dim_cards'
 
-# the full insert works (16k rows), but the batch insert fails
 errors = client.insert_rows_json(table_id, card_list)
 if errors:
     print(errors)
 
-
-# get some weird error with this batch job (404 table not found)
-# above job works fine
-# batch_size = 5000
-# for i in range(0, len(card_list), batch_size):
-#     chunk = card_list[i:i+batch_size]
-#     errors = client.insert_rows_json(table_id, chunk)
-#     if errors:
-#         print(errors)

@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS mtgapipeline.mtga_silver.players;
 DROP TABLE IF EXISTS mtgapipeline.mtga_silver.matches;
 DROP TABLE IF EXISTS mtgapipeline.mtga_silver.decks;
 DROP TABLE IF EXISTS mtgapipeline.mtga_silver.turn1_hands;
+DROP TABLE IF EXISTS mtgapipeline.mtga_silver.play_draw;
 DROP TABLE IF EXISTS mtgapipeline.mtga_silver.pk_counter;
 
 CREATE TABLE `mtgapipeline.mtga_silver.players` (
@@ -83,6 +84,20 @@ CREATE TABLE `mtgapipeline.mtga_silver.turn1_hands` (
   went_first BOOL,                   -- If the player went first
   player_win BOOL,                   -- If the player won the match
   final_hand BOOL                   -- If this row is the player's final hand
+)
+CLUSTER BY match_id, player_id;
+
+CREATE TABLE `mtgapipeline.mtga_silver.play_draw` (
+  turn_id STRING NOT NULL,          -- PK, match_id + '_' + turn_num
+  match_id INT64 NOT NULL,          -- FK, references matches
+  turn_num INT64 NOT NULL,          -- The turn number per match, may not start at 1 if mulligan options were chosen
+
+  player_id STRING NOT NULL,        -- FK, references players
+  deck_id INT64 NOT NULL,           -- FK, references decks
+
+  cards_drawn  ARRAY<INT64>,        -- Cards drawn in this turn
+  cards_played  ARRAY<INT64>       -- Cards that left the hand this turn (can be discarded by player or opponent)
+  
 )
 CLUSTER BY match_id, player_id;
 

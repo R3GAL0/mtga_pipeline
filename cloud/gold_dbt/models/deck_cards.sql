@@ -1,16 +1,11 @@
-
-/*
+"""
 Gold layer: deck card summary
 
 Grain:
     deck_id, card_id
 
-Derived metrics:    (per deck)
-
-
 Notes:
-
-*/
+"""
 
 {{ config(materialized='table') }}
 

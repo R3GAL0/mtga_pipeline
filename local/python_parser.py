@@ -1,9 +1,25 @@
+"""
+MTGA Data Pipeline: Bronze Layer Ingestion
 
-# parses Player.log files and creates a .csv for each .log
-# .csv has columns="game_num", "player_id", "timestamp", "event", "payload"
+Parse the Player_log.log and dump each session of games into a Player.csv 
+Tracking new games, Player_id, and game start time
 
-# setup to bulk run over the whole of ./data/raw while ignoring already parsed files
+GENERAL PROCESS:
+    Parse the Player.log line by line
+    Record last deck found
+    When a game start is detected write the deck list to the csv and start recording game event payloads
+    When game end is detected stop recording and continue looking line by line waiting for the next game start event
 
+    If no games were found in Player.log delete the raw file
+
+    The program is made to processes any files in /data/raw, 
+        it will ignore the raw file if the parsed version is in /data/parsed_csv
+
+    The parsed_csv files will then be moved to the cloud for insertion into the silver layer
+
+Notes:
+    .csv has columns="game_num", "player_id", "timestamp", "event", "payload"
+"""
 
 import csv
 import os
@@ -47,7 +63,7 @@ def parse_logs(input_path_file, output_path_file):
 #       unwanted metadata/response types
         unwanted = ['ClientToGreuimessage', 'ClientToGremessage', '==>', 'Client.TcpConnection.Close']
 
-        # Convert file to an iterator to look ahead safely
+        # Convert file to an iterator to read ahead on lines without consuming them
         log_iter = iter(log_data)
         buffered_line = None
         deck_list = ''
@@ -67,7 +83,6 @@ def parse_logs(input_path_file, output_path_file):
                 line = line.strip()
 
             # I want to grab this line prior to recording, it contains the deck list
-            # ==> DeckUpsertDeckV2        
             if '[UnityCrossThreadLogger]==> DeckUpsertDeckV2' in line:
                 deck_list = line 
                 continue
@@ -77,14 +92,11 @@ def parse_logs(input_path_file, output_path_file):
             # in cases of low latency/server load state will switch immediately from 'ConnectedToMatchDoor_ConnectingToGRE' to 'Playing'
             if match_start_pattern.match(line):
                 recording = True
-                # print('recording on')
                 game_num += 1
                 continue
 
-            # if line.startswith('[UnityCrossThreadLogger]STATE CHANGED {"old":"Playing","new":"MatchCompleted"}') and buffered_line:
             if line.startswith('[UnityCrossThreadLogger]STATE CHANGED {"old":"Playing","new":"MatchCompleted"}'):
                 recording = False
-                # print('recording off')
                 continue
 
             if not recording:
@@ -123,35 +135,10 @@ def parse_logs(input_path_file, output_path_file):
                 out_file.writerow([game_num, metadata_split[1], metadata_split[0], 'deck_list', deck_list])
                 deck_list = ''
 
-
-            # This block was removed. All payloads of interest are inline with [UnityCrossThreadLogger], or are on the following line
-            # # The payload is a nested json, need to track open and close paren    
-            # depth = payload.count('{') - payload.count('}')
-            # while depth > 0:
-            #     print('Depth in use')
-            #     try:
-            #         next_line = next(log_iter).strip()
-            #     except StopIteration:
-            #         break
-
-            #     # Stop if the next line is another response
-            #     if next_line.startswith('[UnityCrossThreadLogger]'):
-            #         buffered_line = next_line
-            #         break
-
-            #     payload += next_line
-            #     depth += next_line.count('{') - next_line.count('}')
-
-
             # check payload for valid requestid, if missing then drop row 
             # (signals it is just a timer event aka a player went on the rope and a timer was displayed )
             try:
                 payload_json = json.loads(payload)
-
-                # block was causing valuable rows to be skipped. Including these rows doesn't break downstream process
-                # if payload_json.get('requestId') is None:
-                #     print("skip due to requestId")
-                #     continue
 
                 if metadata_split[2] == 'GreToClientEvent':
                     payload_str = json.dumps(payload_json['greToClientEvent']['greToClientMessages'])

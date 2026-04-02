@@ -12,14 +12,6 @@ The gold layer is built using dbt, with models available [here](cloud/gold_dbt/m
 - The gold layer denormalizes data into analytics-ready tables for dashboard consumption.
 
 
-### Why This Project Is Interesting
-
-- Parses semi-structured game client logs into structured relational models
-- Handles deeply nested JSON payloads from live game events
-- Pulls data from APIs for reference analysis
-- Migrates from local DuckDB development to production BigQuery
-- Demonstrates layered data architecture (Bronze → Silver → Gold)
-
 ## Mulligans in Magic the Gathering
 
 Magic uses the London Mulligan system.
@@ -63,18 +55,6 @@ These insights help players:
 - Docker
 - Data Build Tool (dbt)
 - Looker Studio
-
-## Architecture Overview
-
-| Layer                | Technology/Process                         |
-| -------------------- | ------------------------------------------ |
-| **Ingestion**        | Shell script captures MTGA log files       |
-| **Processing**       | Python + Pandas parses and transforms logs |
-| **Landing Storage**  | GCP Bucket (cloud)                         |
-| **ETL to Silver**    | Docker image deployed on GCP  / Locally with DuckDB  |
-| **ETL to Gold**      | dbt aggregations on GCP into analyitics ready tables        |
-| **Analysis**         | Looker Studio dashboard        |
-
 
 
 ## Process walkthrough
@@ -187,23 +167,6 @@ Other:
 
 To be added later
  
-
-## Development Stages
-
-How the pipeline was built step-by-step ([Pipeline Diagram](mtga_pipeline_flow.png)). 
-
-
-- capture_data.sh: Make a quick shell script to capture game data while the rest of the pipeline is built
-- python_parser.py: Handles the initial parsing of the Player.log. Captures only game data
-- silver_duckdb_schema.sql: Will do initial sql development locally then move to cloud afterwards
-- make_tables_duckdb.py: Build out the logic to split the payloads from the response into RLDB flat tables
-- GCP Bucket: Setup the GCP bucket and get familiar with the platform
-- Cloud Run Jobs: Using the local version of the database deployed it to cloud run jobs as a Docker image.
-- BigQuery: Setup BigQuery on GCP, enforce the schema
-- make_table_bigquery.sql: Refactor make_table_duckdb.sql to work with BigQuery on GCP, moving from local development to the cloud.  
-- Gold layer transform: Perform aggregations on the silver layer tables to put on the dashbaord
-- Looker Studio: Make the dashboard
-
 
 ## Future Enhancements
 
