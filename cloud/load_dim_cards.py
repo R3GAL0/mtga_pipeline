@@ -22,20 +22,13 @@ from dotenv import load_dotenv
 load_dotenv('/home/r3gal/develop/mtga_pipeline/.env')
 
 input_path = "/home/r3gal/develop/mtga_pipeline/data/references"
-# output_path_file = "/home/r3gal/develop/mtga_pipeline/data/references/dim_cards.csv"
 
 card_list = []
 
 with open(f'{input_path}/default-cards-20260312090730.json', 'rb') as f:
-    # , open(output_path_file, 'w') as csvfile:
 
-    # fieldnames = ["arena_id", "oracle_id", "card_name", "scryfall_uri", "mana_cost", "cmc", "colors", "color_identity", "type_line", "set_code", "set_name", "set_type", "rarity"]
-    # writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-    # writer.writeheader()
-    
     arena_ids = set()
     for i, obj in enumerate(ijson.items(f, 'item')):
-    # for obj in ijson.items(f, 'item'):
         arena_id = obj.get('arena_id')
 
         if not arena_id:
@@ -72,9 +65,7 @@ with open(f'{input_path}/default-cards-20260312090730.json', 'rb') as f:
             "set_type":     obj.get('set_type'),
             "rarity":       obj.get('rarity')
         }
-        # print(card)
         card_list.append(card)
-        # writer.writerow(card)
 
 
 # streaming to BigQuery
@@ -82,17 +73,7 @@ with open(f'{input_path}/default-cards-20260312090730.json', 'rb') as f:
 client = bigquery.Client()
 table_id = 'mtgapipeline.mtga_silver.dim_cards'
 
-# the full insert works (16k rows), but the batch insert fails
 errors = client.insert_rows_json(table_id, card_list)
 if errors:
     print(errors)
 
-
-# get some weird error with this batch job (404 table not found)
-# above job works fine
-# batch_size = 5000
-# for i in range(0, len(card_list), batch_size):
-#     chunk = card_list[i:i+batch_size]
-#     errors = client.insert_rows_json(table_id, chunk)
-#     if errors:
-#         print(errors)

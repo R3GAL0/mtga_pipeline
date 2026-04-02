@@ -1,9 +1,19 @@
-/*
+"""
+Gold layer: Mulligan Aggregate Data
 
-*/
+Grain:
+    player_id, deck_id, mulligan number (0-7)
 
--- final columns (deck_id will be null for full player data)
--- player_id, deck_id, mulligan_count (0-7), player_win_rate, player_sample_size, deck_win_rate, deck_sample_size
+Derived metrics:    (per deck)
+    - mulligan count per deck
+    - mulligan win rate per deck
+    - mulligan count per player
+    - mulligan win rate per player
+
+Notes:
+
+"""
+
 
 {{ config(materialized='table') }}
 

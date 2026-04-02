@@ -1,4 +1,3 @@
-
 """
 Gold layer: card_opener_stats
 
@@ -31,7 +30,7 @@ with opener_cards as (
         t1h.deck_id,
         card as arena_id,
         player_win
-        -- AVG(player_win) as card_win_frac
+        
     FROM {{ source('mtga_silver', 'turn1_hands')}} t1h
     CROSS JOIN UNNEST(initial_hand) as card
     WHERE final_hand = TRUE
@@ -43,6 +42,7 @@ opener_stats AS (
         deck_id,
         ROUND(AVG(CASE WHEN player_win THEN 1 ELSE 0 END)*100, 2) AS win_rate_opener,
         count(*) as drawn_opener_cnt
+        
     FROM opener_cards
     GROUP BY arena_id, player_id, deck_id
 ),
@@ -71,19 +71,13 @@ source_data as (
 
         --draw_chance         -- add calculation
 
-    -- FROM {{ source('mtga_silver', 'turn1_hands')}} t1h
     FROM opener_stats os
 
     LEFT JOIN {{source('mtga_silver', 'decks')}} decks
-        -- on t1h.deck_id = decks.deck_id
         on os.deck_id = decks.deck_id
 
     LEFT JOIN {{source('mtga_silver', 'dim_cards')}} cards
-        -- on t1h.arena_id = cards.arena_id
         on os.arena_id = cards.arena_id
-
-    -- LEFT JOIN opener_stats os
-    --     ON t1h.arena_id = os.arena_id
 
 )
 

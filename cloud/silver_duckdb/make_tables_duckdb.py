@@ -1,23 +1,16 @@
-# take the cleaned Player_log.csv s and convert them into relational database tables
-# develop locally then deploy to gcp once functional
-# Use cloud functions ??
+"""
+MTGA Data Pipeline: Silver Layer Ingestion (Local Version)
 
+take the cleaned Player_log.csv and insert the relevant values into DuckDB tables
+
+Used prior to implementing bigquery to test general python code functionality
+"""
 import pandas as pd
 import duckdb
 import json
 from collections import Counter
 import os
 
-# read each csv 1 game at a time and partition into the correct tables
-
-
-# For each game
-# save the deck_list in decks
-# save the mulligans
-# save the match details in matches
-#   card draws -> draw_order
-
-# add a new player to players if no match was found for player_id
 
 
 def insert_all(data_dir, db_dir):
@@ -174,22 +167,13 @@ def insert_turn1_hands(conn, df, match_id):
         return turn.get('phase') == 'Phase_Beginning'
 
     # Getting all the payloads for the hand selection phase
-    # end_idx = df[df['payload'].apply(is_beginning_phase).values]
-    # final_hand = end_idx.index[0] + 1
-    # df_next = df.iloc[:final_hand]
-
-    # df_hands = df_next[df_next['payload'].apply(has_hand_zone).values][1:]
-
-    # chat version
     beginning_idx = df[df['payload'].apply(is_beginning_phase)].index.min()
     df_until_beginning = df.loc[:beginning_idx]
     df_hands = df_until_beginning[df_until_beginning['payload'].apply(has_hand_zone)].iloc[1:]
 
-
     #   grabbing some useful values, will be used when writing to the table
     player_id = df_hands.iloc[0]['player_id']
     seatID = df_hands['payload'].iloc[0].get('systemSeatIds')[0]
-
 
     #   Making a mapping variable to map instanceId of a card to its grpId (arena_id)
     gameObjectMap = {}

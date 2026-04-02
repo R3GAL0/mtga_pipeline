@@ -92,7 +92,6 @@ def parse_logs(input_path_file, output_path_file):
             # in cases of low latency/server load state will switch immediately from 'ConnectedToMatchDoor_ConnectingToGRE' to 'Playing'
             if match_start_pattern.match(line):
                 recording = True
-                # print('recording on')
                 game_num += 1
                 continue
 
