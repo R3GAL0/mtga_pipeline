@@ -211,7 +211,7 @@ def has_hand_zone(payload_line):
         return False
 
     gsm = payload_line.get('gameStateMessage')
-    if not gsm:
+    if not isinstance(gsm, dict):
         return False
 
     return any(
@@ -241,17 +241,18 @@ def get_game_obj (payload_line):
 
 # detects the final hand/begining of the actual play phase
 def is_beginning_phase(payload_line):
-    if str(type(payload_line)) != "<class 'dict'>":
+    if not isinstance(payload_line, dict):
         return False
+        
     if payload_line.get('type') != 'GREMessageType_GameStateMessage':
         return False
-    
+
     gsm = payload_line.get('gameStateMessage')
-    if not gsm:
+    if not isinstance(gsm, dict):
         return False
     
     turn = gsm.get('turnInfo')
-    if not turn:
+    if not isinstance(turn, dict):
         return False
     
     return turn.get('phase') == 'Phase_Beginning'
@@ -261,9 +262,12 @@ def insert_turn1_hands(client, df, match_id, player_win, deck_id):
 
 
     # slicing the df to get the initial hand payloads
-    beginning_idx = df[df['payload'].apply(is_beginning_phase)].index.min()
-    df_until_beginning = df.loc[:beginning_idx]
+    mask = df['payload'].apply(is_beginning_phase)
+    beginning_idx = mask.to_numpy().argmax()
+    df_until_beginning = df.iloc[beginning_idx:].copy()
+
     df_hands = df_until_beginning[df_until_beginning['payload'].apply(has_hand_zone)].iloc[1:]
+
 
     #   grabbing some useful values, will be used when writing to the table
     player_id = df_hands.iloc[0]['player_id']
@@ -349,15 +353,17 @@ def insert_turn1_hands(client, df, match_id, player_win, deck_id):
     #   Formatting the hands_dict for writting to disk
     hands_dict = []
     mulliganCount = 0
-    player_num = None
+    # player_num = None
+    # player_num = seatID
     for index, row in df_hands.iterrows():
 
         if row.get('player', {}) is not None:
             mulliganCount = row.get('player', {}).get('mulliganCount', 0)
+            
 
-        player = row.get('player', {})
-        if player_num is None:
-            player_num = player.get('systemSeatNumber', 0)
+        # player = row.get('player', {})
+        # if player_num is None:
+        #     player_num = player.get('systemSeatNumber', 0)
 
         if row['hand_p1_grpid'] is not None:
             # getting a new hand_id for insertion
@@ -408,16 +414,9 @@ def insert_draws_plays (client, df, match_id, deck_id, seatID):
     player_id = df.iloc[0]['player_id']
 
     # slicing the df to get the initial hand payloads
-    beginning_idx = df[df['payload'].apply(is_beginning_phase)].index.min()
+    mask = df['payload'].apply(is_beginning_phase)
+    beginning_idx = mask.to_numpy().argmax()
     df = df.iloc[beginning_idx:].copy()
-
-    # grabbing some useful vars
-    # seatID = df['payload'].iloc[1].get('systemSeatIds')[0]
-    # player_id = df.iloc[0]['player_id']
-    #   grabbing some useful values, will be used when writing to the table
-    # seats = df['payload'].iloc[0].get('systemSeatIds')
-    # seatID = seats[0]
-    # print('seats: ' + str(seats))
 
     # making the gameObjectMapping var
     df_gom = df['payload'].apply(get_game_obj)
@@ -456,11 +455,6 @@ def insert_draws_plays (client, df, match_id, deck_id, seatID):
         return
 
     # zones is guaranteed to exist for all items in payload
-    print('df \n')
-    print(df.iloc[0])
-    print('df_temp \n')
-    print(df_temp.iloc[0])
-
     df_temp['phase'] = df_temp['payload'].apply(lambda x: x.get('gameStateMessage', {}).get('turnInfo', {}).get('phase') if type(x) == dict else None)
 
     df_temp['turn_raw'] = df_temp['payload'].apply(
@@ -523,6 +517,7 @@ def insert_draws_plays (client, df, match_id, deck_id, seatID):
 
     #   Formatting the hands_dict for writting to disk
     hands_dict = []
+    df_tt.sort_values(by=['turn'], inplace=True)
     for index, row in df_tt.iterrows():
 
         hands_dict.append({
@@ -533,8 +528,8 @@ def insert_draws_plays (client, df, match_id, deck_id, seatID):
             'player_id': player_id,
             'deck_id': deck_id,
 
-            'cards_drawn': row['hz_played'],
-            'cards_played': row['hz_drawn']
+            'cards_drawn': row['hz_drawn'],
+            'cards_played': row['hz_played']
         })
 
     errors = client.insert_rows_json("mtgapipeline.mtga_silver.play_draw", hands_dict)
