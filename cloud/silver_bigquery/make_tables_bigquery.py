@@ -10,9 +10,9 @@ GENERAL PROCESS:
 
     insert the deck_list in decks, and a deck_list hash for uniqueness
     insert the match details in matches
-      card draws -> draw_order
     insert turn 1 hands with proper mappings from objectInstanceIds to arena_ids
       including extra rows for mulligans
+    insert turn by turn cards played and drawn into play_draw 
 """
 
 import pandas as pd
@@ -414,18 +414,19 @@ def insert_draws_plays (client, df, match_id, deck_id, seatID):
     UNKNOWN_CARD_ID = -1
     player_id = df.iloc[0]['player_id']
 
-    # slicing the df to get the initial hand payloads
-    mask = df['payload'].apply(is_beginning_phase)
-    beginning_idx = mask.to_numpy().argmax()
-    df = df.iloc[beginning_idx:].copy()
-
     # making the gameObjectMapping var
-    df_gom = df['payload'].apply(get_game_obj)
+    # Using the full game df, otherwise objs generated before game kick-off are not captured
+    df_gom = df['payload'].apply(get_game_obj).copy()
     df_gom = df_gom.dropna(how='all')
 
     gameObjectMap = {}
     for item in df_gom:
         gameObjectMap.update(item)
+
+    # slicing the df to get the initial hand payloads
+    mask = df['payload'].apply(is_beginning_phase)
+    beginning_idx = mask.to_numpy().argmax()
+    df = df.iloc[beginning_idx:].copy()
 
     # setting zone by player seat
     if seatID == 1: 
@@ -580,10 +581,6 @@ def insert_match (client, df):
         if item.get('scope') == 'MatchScope_Match':
             winner_seat = item.get('winningTeamId')
 
-    # will change draw_order after implementation
-    draw_order = [
-        {'cards': []}
-    ]
     match_dict = [{
         'match_id': match_id,
         'deck_id': deck_id,
@@ -592,8 +589,7 @@ def insert_match (client, df):
         'start_time': start_time,
         'duration_sec': duration_sec,
         'winner_seat': winner_seat,
-        'game_format': game_format,
-        'draw_order': draw_order
+        'game_format': game_format
     }]
 
     errors = client.insert_rows_json("mtgapipeline.mtga_silver.matches", match_dict)

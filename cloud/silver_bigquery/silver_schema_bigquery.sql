@@ -47,8 +47,8 @@ CREATE TABLE `mtgapipeline.mtga_silver.matches` (
   start_time TIMESTAMP NOT NULL,  -- Start of match
   duration_sec INT64,             -- Match duration in seconds
   winner_seat INT64,              -- which seat won the match (1 or 2)
-  game_format STRING,             -- Match format (standard, event, historic, brawl, etc)
-  draw_order ARRAY<STRUCT<cards ARRAY<INT64>>> -- The order of cards drawn during the match after the starting hand.
+  game_format STRING             -- Match format (standard, event, historic, brawl, etc)
+  --draw_order ARRAY<STRUCT<cards ARRAY<INT64>>> -- The order of cards drawn during the match after the starting hand.
                                                -- Separated by turn drawn, using oracle_id to track card data
 )
 CLUSTER BY player_id, deck_id;
