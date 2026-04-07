@@ -16,6 +16,7 @@ GENERAL PROCESS:
 """
 
 import pandas as pd
+pd.set_option('future.no_silent_downcasting', True)
 import json
 from collections import Counter
 import os
@@ -490,7 +491,7 @@ def insert_draws_plays (client, df, match_id, deck_id, seatID):
     df_tt['hz_last'] = df_tt['hz_last'].apply(
         lambda x: [gameObjectMap.get(item, UNKNOWN_CARD_ID) for item in x] if isinstance(x, list) else []
     )
-    df_tt['hz_last_last'] = df_tt['hz_last'].ffill().shift(1)
+    df_tt['hz_last_last'] = df_tt['hz_last'].ffill().shift(1).infer_objects(copy=False)
     
     # 
     df_tt.drop('hz', axis=1, inplace=True)
