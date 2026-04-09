@@ -1,12 +1,16 @@
--- Layer: Silver
--- Target: BigQuery
--- Description:
--- Normalized schema built from MTGA Player.log files
--- Designed for analytical workloads (winrate, deck and mulligan analysis, rank tracking)
--- Tables are modeled at event-level grain for downstream aggregation.
+"""
+Layer: Silver
+Target: BigQuery
 
--- Foreign keys are documented but not enforced (BigQuery limitation).
--- Referential integrity is handled in upstream transformations.
+Description:
+  Normalized schema built from MTGA Player.log files
+  Designed for analytical workloads (winrate, deck and mulligan analysis, rank tracking)
+  Tables are modeled at event-level grain for downstream aggregation.
+
+  Foreign keys are documented but not enforced (BigQuery limitation).
+  Referential integrity is handled in upstream transformations.
+
+"""
 
 -- bq query --use_legacy_sql=false < silver_schema_bigquery.sql
 
@@ -43,12 +47,12 @@ CREATE TABLE `mtgapipeline.mtga_silver.matches` (
   match_id INT64 NOT NULL,        -- PK
   deck_id INT64 NOT NULL,         -- FK, references decks
   player_id STRING,               -- FK, refrences players
-  player_seat INT64,              -- seat of the player_id player (1 or 2)
   start_time TIMESTAMP NOT NULL,  -- Start of match
   duration_sec INT64,             -- Match duration in seconds
+  player_seat INT64,              -- seat of the player_id player (1 or 2)
   winner_seat INT64,              -- which seat won the match (1 or 2)
-  game_format STRING,             -- Match format (standard, event, historic, brawl, etc)
-  draw_order ARRAY<STRUCT<cards ARRAY<INT64>>> -- The order of cards drawn during the match after the starting hand.
+  game_format STRING             -- Match format (standard, event, historic, brawl, etc)
+  --draw_order ARRAY<STRUCT<cards ARRAY<INT64>>> -- The order of cards drawn during the match after the starting hand.
                                                -- Separated by turn drawn, using oracle_id to track card data
 )
 CLUSTER BY player_id, deck_id;
