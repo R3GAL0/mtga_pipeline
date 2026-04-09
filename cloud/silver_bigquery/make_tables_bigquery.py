@@ -37,7 +37,7 @@ def insert_all(data_dir, client):
         df_temp = pd.read_csv(f"{data_dir}/{file}")
 
         # the truncated payloads break json.loads -> dropping these rows
-        df_temp = df_temp[df_temp["payload"] != '[Message summarized because one or more GameStateMessages exceeded the 50 GameObject or 50 Annotation limit.]']
+        df_temp = df_temp[df_temp["payload"] != '""[Message summarized because one or more GameStateMessages exceeded the 50 GameObject or 50 Annotation limit.]""']
 
         df_temp['payload'] = df_temp['payload'].apply(json.loads)
         df = df_temp.explode('payload').reset_index(drop=True)
@@ -48,9 +48,9 @@ def insert_all(data_dir, client):
             seatID = insert_turn1_hands(client, df_part, match_id, player_win, deck_id)
             insert_draws_plays (client, df_part, match_id, deck_id, seatID)
         
-        del df_temp
-        del df
-        gc.collect()
+        # del df_temp
+        # del df
+        # gc.collect()
 
 # increments the pk_counter table, returns the incremented PK value
 # used to get the next PK for each table (BigQuery doesnt have autoincrement on PKs)
@@ -114,6 +114,7 @@ def insert_deck (client, df, match_id):
         deck_list = sorted(deck_list)
 
     except Exception as error_details:
+        # Happens for unsupported game modes (ie Events)
         print('insert_deck error: ' + str(error_details))
         deck_name = 'Blank'
         deck_list = []
@@ -123,15 +124,16 @@ def insert_deck (client, df, match_id):
     #   checking if the deck already exists, returning the deck_id if it does
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
+            bigquery.ScalarQueryParameter("player_id", "STRING", player_id),
             bigquery.ScalarQueryParameter("deck_hash", "STRING", hash_list(deck_list)),
             bigquery.ScalarQueryParameter("side_hash", "STRING", hash_list(deck_sideboard)),
             ]
     )
-    # deck_list and deck_sideboard are lists of arena_ids
 
     query_deck = """
         SELECT deck_id from `mtgapipeline.mtga_silver.decks`
-        WHERE deck_hash = @deck_hash
+        WHERE player_id = @player_id
+        and deck_hash = @deck_hash
         and side_hash = @side_hash
         """
 
@@ -585,9 +587,9 @@ def insert_match (client, df):
         'match_id': match_id,
         'deck_id': deck_id,
         'player_id': player_id,
-        'player_seat': player_seat,
         'start_time': start_time,
         'duration_sec': duration_sec,
+        'player_seat': player_seat,
         'winner_seat': winner_seat,
         'game_format': game_format
     }]

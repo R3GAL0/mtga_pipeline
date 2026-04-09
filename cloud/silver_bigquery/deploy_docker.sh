@@ -18,4 +18,4 @@ gcloud run jobs execute $IMAGE-job --region northamerica-northeast2
 
 
 # gcloud run jobs execute mtga-silver-job --region northamerica-northeast2
-# gcloud run jobs update mtga-silver-job --task-timeout=2h --memory 2Gi --region northamerica-northeast2
+# gcloud run jobs update mtga-silver-job --task-timeout=2h --memory 2Gi --max-retries=0 --region northamerica-northeast2

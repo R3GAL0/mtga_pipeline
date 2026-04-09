@@ -17,6 +17,8 @@ GENERAL PROCESS:
 
     The parsed_csv files will then be moved to the cloud for insertion into the silver layer
 
+    The MTGA player_id is hashed before storage at all occurances
+
 Notes:
     .csv has columns="game_num", "player_id", "timestamp", "event", "payload"
 """
@@ -25,6 +27,7 @@ import csv
 import os
 import json
 import re
+from hashlib import sha256
 
 # raw and output file paths
 raw_path = '/home/r3gal/develop/mtga_pipeline/data/raw'
@@ -49,6 +52,10 @@ match_start_pattern = re.compile(
     r'^\[UnityCrossThreadLogger\]STATE CHANGED '
     r'\{"old":"ConnectedToMatchDoor_(?:ConnectedToGRE_Waiting|ConnectingToGRE)","new":"Playing"\}'
 )
+# user_id s are 26 chars long
+user_id_pattern = re.compile(
+    r'userId": ".........................."'
+)
 
 def parse_logs(input_path_file, output_path_file):
     recording = False
@@ -63,7 +70,8 @@ def parse_logs(input_path_file, output_path_file):
 #       unwanted metadata/response types
         unwanted = ['ClientToGreuimessage', 'ClientToGremessage', '==>', 'Client.TcpConnection.Close']
 
-        # Convert file to an iterator to read ahead on lines without consuming them
+        # Convert file part to an iterator to read ahead on lines. 
+        # A for loop over log_data has issues with reading ahead breaking the last couple lines of the loop
         log_iter = iter(log_data)
         buffered_line = None
         deck_list = ''
@@ -78,9 +86,9 @@ def parse_logs(input_path_file, output_path_file):
             else:
                 try:
                     line = next(log_iter)
+                    line = line.strip()
                 except StopIteration:
                     break
-                line = line.strip()
 
             # I want to grab this line prior to recording, it contains the deck list
             if '[UnityCrossThreadLogger]==> DeckUpsertDeckV2' in line:
@@ -127,12 +135,16 @@ def parse_logs(input_path_file, output_path_file):
             if len(metadata_split[1].split(' ')) == 3:
                 metadata_split[1] = metadata_split[1].split(' ')[2]
 
+            # hashing the player_id before saving to csv
+            player_id_hash = sha256(metadata_split[1].encode("utf-8")).hexdigest()
+            payload = payload.replace(metadata_split[1], player_id_hash)
+
             # a match started, writing the last found deck list as the first line of the game
             if len(deck_list) > 1:
                 # trim to only the payload, wrap in a 'list' to explode payload column later
                 deck_list = '[' + deck_list[deck_list.find('{'):] + ']'
 
-                out_file.writerow([game_num, metadata_split[1], metadata_split[0], 'deck_list', deck_list])
+                out_file.writerow([game_num, player_id_hash, metadata_split[0], 'deck_list', deck_list])
                 deck_list = ''
 
             # check payload for valid requestid, if missing then drop row 
@@ -150,10 +162,15 @@ def parse_logs(input_path_file, output_path_file):
 
 #           If a player causes > 50 events in one turn a JSON object will not be returned
             except json.JSONDecodeError:
-                # payload_str = payload
                 payload_str = json.dumps(payload)
 
-            out_file.writerow([game_num, metadata_split[1], metadata_split[0], metadata_split[2], payload_str])
+            # finding other player_id and replacing with placeholder string
+            search_match = user_id_pattern.search(payload_str)
+            if search_match:
+                start, end = user_id_pattern.search(payload_str).span()
+                payload_str = payload_str.replace(payload_str[start+10:end-1], "other_player_id")
+
+            out_file.writerow([game_num, player_id_hash, metadata_split[0], metadata_split[2], payload_str])
             rows_written += 1
     # removing files that have no games, both .log and .csv are deleted
     if rows_written == 0:
